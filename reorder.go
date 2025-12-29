@@ -303,7 +303,7 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 						continue
 					}
 
-					// Try longest prefix match (e.g., NewConfigWithTimeout → Config)
+					// Try longest match if suffix contains type name (e.g., NewConfigWithTimeout → Config, NewRealFileOps → FileOps)
 					// Sort type names by length (longest first) to get best match
 					var typeNames []string
 					for tn := range typeGroups {
@@ -317,7 +317,7 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 					matched := false
 
 					for _, tn := range typeNames {
-						if strings.HasPrefix(suffix, tn) {
+						if strings.Contains(suffix, tn) {
 							if tg := typeGroups[tn]; tg != nil {
 								tg.constructors = append(tg.constructors, genDecl)
 								matched = true
