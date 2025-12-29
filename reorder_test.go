@@ -235,6 +235,65 @@ func (c *Config) Validate() error {
 	}
 }
 
+func TestSource_ConstructorWithPrefix(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+type FileOps struct {
+	value int
+}
+
+func NewFileOps(v int) *FileOps {
+	return &FileOps{value: v}
+}
+
+func (f *FileOps) DoSomething() error {
+	return nil
+}
+
+func NewRealFileOps() *FileOps {
+	return &FileOps{value: 42}
+}
+
+func NewMockFileOps() *FileOps {
+	return &FileOps{value: 0}
+}
+`
+
+	expected := `package example
+
+type FileOps struct {
+	value int
+}
+
+func NewFileOps(v int) *FileOps {
+	return &FileOps{value: v}
+}
+
+func NewMockFileOps() *FileOps {
+	return &FileOps{value: 0}
+}
+
+func NewRealFileOps() *FileOps {
+	return &FileOps{value: 42}
+}
+
+func (f *FileOps) DoSomething() error {
+	return nil
+}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
 func TestSource_EnumHandling(t *testing.T) {
 	t.Parallel()
 
