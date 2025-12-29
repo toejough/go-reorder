@@ -142,11 +142,13 @@ type categorizedDecls struct {
 	unexportedFuncs  []*dst.FuncDecl
 }
 
-// enumGroup pairs an enum type with its iota const block.
+// enumGroup pairs an enum type with its iota const block and associated methods.
 type enumGroup struct {
-	typeName  string
-	typeDecl  *dst.GenDecl
-	constDecl *dst.GenDecl
+	typeName          string
+	typeDecl          *dst.GenDecl
+	constDecl         *dst.GenDecl
+	exportedMethods   []*dst.FuncDecl
+	unexportedMethods []*dst.FuncDecl
 }
 
 // typeGroup holds a type and its associated constructors and methods.
@@ -340,10 +342,13 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 		}
 	}
 
-	// Second pass: pair enum types with their const blocks
+	// Second pass: pair enum types with their const blocks and transfer methods
 	for _, enumGroup := range cat.exportedEnums {
 		if typeGroups[enumGroup.typeName] != nil {
 			enumGroup.typeDecl = typeGroups[enumGroup.typeName].typeDecl
+			// Transfer methods from typeGroup to enumGroup
+			enumGroup.exportedMethods = typeGroups[enumGroup.typeName].exportedMethods
+			enumGroup.unexportedMethods = typeGroups[enumGroup.typeName].unexportedMethods
 			// Remove from regular types
 			for i, tg := range cat.exportedTypes {
 				if tg.typeName == enumGroup.typeName {
@@ -357,6 +362,9 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 	for _, enumGroup := range cat.unexportedEnums {
 		if typeGroups[enumGroup.typeName] != nil {
 			enumGroup.typeDecl = typeGroups[enumGroup.typeName].typeDecl
+			// Transfer methods from typeGroup to enumGroup
+			enumGroup.exportedMethods = typeGroups[enumGroup.typeName].exportedMethods
+			enumGroup.unexportedMethods = typeGroups[enumGroup.typeName].unexportedMethods
 			// Remove from regular types
 			for i, tg := range cat.unexportedTypes {
 				if tg.typeName == enumGroup.typeName {
@@ -617,7 +625,7 @@ func reassembleDeclarations(cat *categorizedDecls) []dst.Decl {
 		decls = append(decls, constDecl)
 	}
 
-	// Exported enums (type + const block pairs)
+	// Exported enums (type + const block pairs + methods)
 	for _, enumGrp := range cat.exportedEnums {
 		if enumGrp.typeDecl != nil {
 			enumGrp.typeDecl.Decs.Before = dst.EmptyLine
@@ -628,6 +636,17 @@ func reassembleDeclarations(cat *categorizedDecls) []dst.Decl {
 		enumGrp.constDecl.Decs.Before = dst.EmptyLine
 		enumGrp.constDecl.Decs.Start.Append(fmt.Sprintf("// %s values.", enumGrp.typeName))
 		decls = append(decls, enumGrp.constDecl)
+
+		// Add methods (exported first, then unexported)
+		for _, method := range enumGrp.exportedMethods {
+			method.Decs.Before = dst.EmptyLine
+			decls = append(decls, method)
+		}
+
+		for _, method := range enumGrp.unexportedMethods {
+			method.Decs.Before = dst.EmptyLine
+			decls = append(decls, method)
+		}
 	}
 
 	// Exported variables (merged)
@@ -671,7 +690,7 @@ func reassembleDeclarations(cat *categorizedDecls) []dst.Decl {
 		decls = append(decls, constDecl)
 	}
 
-	// Unexported enums (type + const block pairs)
+	// Unexported enums (type + const block pairs + methods)
 	for _, enumGrp := range cat.unexportedEnums {
 		if enumGrp.typeDecl != nil {
 			enumGrp.typeDecl.Decs.Before = dst.EmptyLine
@@ -682,6 +701,17 @@ func reassembleDeclarations(cat *categorizedDecls) []dst.Decl {
 		enumGrp.constDecl.Decs.Before = dst.EmptyLine
 		enumGrp.constDecl.Decs.Start.Append(fmt.Sprintf("// %s values.", enumGrp.typeName))
 		decls = append(decls, enumGrp.constDecl)
+
+		// Add methods (exported first, then unexported)
+		for _, method := range enumGrp.exportedMethods {
+			method.Decs.Before = dst.EmptyLine
+			decls = append(decls, method)
+		}
+
+		for _, method := range enumGrp.unexportedMethods {
+			method.Decs.Before = dst.EmptyLine
+			decls = append(decls, method)
+		}
 	}
 
 	// Unexported variables (merged)
@@ -740,13 +770,30 @@ func sortCategorized(cat *categorizedDecls) {
 		return cat.unexportedVars[i].Names[0].Name < cat.unexportedVars[j].Names[0].Name
 	})
 
-	// Sort enum groups by type name
+	// Sort enum groups by type name and their methods
 	sort.Slice(cat.exportedEnums, func(i, j int) bool {
 		return cat.exportedEnums[i].typeName < cat.exportedEnums[j].typeName
 	})
+	for _, enumGrp := range cat.exportedEnums {
+		sort.Slice(enumGrp.exportedMethods, func(i, j int) bool {
+			return enumGrp.exportedMethods[i].Name.Name < enumGrp.exportedMethods[j].Name.Name
+		})
+		sort.Slice(enumGrp.unexportedMethods, func(i, j int) bool {
+			return enumGrp.unexportedMethods[i].Name.Name < enumGrp.unexportedMethods[j].Name.Name
+		})
+	}
+
 	sort.Slice(cat.unexportedEnums, func(i, j int) bool {
 		return cat.unexportedEnums[i].typeName < cat.unexportedEnums[j].typeName
 	})
+	for _, enumGrp := range cat.unexportedEnums {
+		sort.Slice(enumGrp.exportedMethods, func(i, j int) bool {
+			return enumGrp.exportedMethods[i].Name.Name < enumGrp.exportedMethods[j].Name.Name
+		})
+		sort.Slice(enumGrp.unexportedMethods, func(i, j int) bool {
+			return enumGrp.unexportedMethods[i].Name.Name < enumGrp.unexportedMethods[j].Name.Name
+		})
+	}
 
 	// Sort type groups by type name
 	sort.Slice(cat.exportedTypes, func(i, j int) bool {

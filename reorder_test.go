@@ -449,3 +449,140 @@ const (
 		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
 	}
 }
+
+// TestSource_EnumWithMethods is a regression test for the bug where methods
+// on enum types were being deleted during reordering.
+// This bug occurred because:
+// 1. Enum types are identified and moved to enumGroup structs
+// 2. Methods were associated with types in typeGroups map
+// 3. When enums were extracted from regular types, methods stayed in typeGroups
+// 4. enumGroup didn't have a methods field, so methods were never output
+func TestSource_EnumWithMethods(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+type ChangeType int
+
+const (
+	MonotonicCount ChangeType = iota
+	FluctuatingCount
+	Content
+)
+
+func (ct *ChangeType) String() string {
+	switch *ct {
+	case MonotonicCount:
+		return "monotonic"
+	case FluctuatingCount:
+		return "fluctuating"
+	case Content:
+		return "content"
+	default:
+		return "unknown"
+	}
+}
+
+func (ct *ChangeType) UnmarshalText(text []byte) error {
+	return nil
+}
+`
+
+	expected := `package example
+
+type ChangeType int
+
+// ChangeType values.
+const (
+	MonotonicCount ChangeType = iota
+	FluctuatingCount
+	Content
+)
+
+func (ct *ChangeType) String() string {
+	switch *ct {
+	case MonotonicCount:
+		return "monotonic"
+	case FluctuatingCount:
+		return "fluctuating"
+	case Content:
+		return "content"
+	default:
+		return "unknown"
+	}
+}
+
+func (ct *ChangeType) UnmarshalText(text []byte) error {
+	return nil
+}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// TestSource_EnumWithMixedMethodVisibility tests that enum types preserve
+// both exported and unexported methods in correct order.
+func TestSource_EnumWithMixedMethodVisibility(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+const (
+	StatusActive Status = iota
+	StatusInactive
+)
+
+type Status int
+
+func (s *Status) validate() error {
+	return nil
+}
+
+func (s *Status) String() string {
+	return "status"
+}
+
+func (s *Status) IsActive() bool {
+	return *s == StatusActive
+}
+`
+
+	expected := `package example
+
+type Status int
+
+// Status values.
+const (
+	StatusActive Status = iota
+	StatusInactive
+)
+
+func (s *Status) IsActive() bool {
+	return *s == StatusActive
+}
+
+func (s *Status) String() string {
+	return "status"
+}
+
+func (s *Status) validate() error {
+	return nil
+}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
