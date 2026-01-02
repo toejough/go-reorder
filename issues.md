@@ -108,12 +108,28 @@ _No selected issues_
 
 Issues currently being worked on.
 
+_No issues in progress_
+
+---
+
+## Review
+
+Issues ready for review/testing.
+
+_No issues in review_
+
+---
+
+## Done
+
+Completed issues.
+
 ### 1. Fix deletion of receiver methods in method-only files
 
 #### Universal
 
 **Status**
-in progress
+done
 
 **Description**
 When `reorder.Source()` processes a Go file that contains only receiver methods (no type definitions, constants, or package-level functions), it deletes all the method implementations, leaving only the package declaration and imports.
@@ -137,8 +153,16 @@ Critical - causes data loss
 **Started**
 2026-01-01 23:30 EST
 
+**Completed**
+2026-01-02 09:59 EST
+
+**Commit**
+57a36e1
+
 **Timeline**
 
+- 2026-01-02 09:59 EST - Complete: Verified fix working in glowsync after magefile dependency update
+- 2026-01-01 23:56 EST - Complete: Committed fix (57a36e1), all tests passing
 - 2026-01-01 23:42 EST - COMMIT: Routing to git-workflow to commit fix
 - 2026-01-01 23:42 EST - REFACTOR: Auditor PASS - 0 linter issues, all 16 tests passing
 - 2026-01-01 23:40 EST - REFACTOR: Routing to auditor for code quality review
@@ -159,21 +183,18 @@ While attempting to enable go-reorder in CI pipeline for copy-files repository. 
 **Expected Behavior**
 `reorder.Source()` should preserve all receiver methods and reorder them according to standard section ordering.
 
----
+**Root Cause**
+In `categorizeDeclarations()` at lines 276-290, when a method declaration is encountered, a `typeGroup` is created/updated for the receiver type and the method is added to the typeGroup's method lists. However, if the type isn't declared in this file (typeDecl remains nil), the typeGroup is never added to `cat.exportedTypes` or `cat.unexportedTypes`, so `reassembleDeclarations()` never includes them in the output.
 
-## Review
+#### Documentation
 
-Issues ready for review/testing.
+**Solution**
+Added a third pass in `categorizeDeclarations()` (lines 378-387) that identifies typeGroups with methods but no type declaration (typeDecl == nil) and adds them to the appropriate categorized list based on whether the type name is exported.
 
-_No issues in review_
-
----
-
-## Done
-
-Completed issues.
-
-_No completed issues_
+**Files Modified**
+- reorder.go: Added third pass to categorize method-only typeGroups
+- reorder_test.go: Added 5 comprehensive regression tests + real-world glowsync test case
+- issues.md: Created issue tracker for the project
 
 ---
 
