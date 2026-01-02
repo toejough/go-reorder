@@ -1,0 +1,192 @@
+# Issue Tracker
+
+A simple md issue tracker.
+
+## Statuses
+
+- backlog (to choose from)
+- selected (to work on next)
+- in progress (currently being worked on)
+- review (ready for review/testing)
+- done (completed)
+- cancelled (not going to be done, for whatever reason, should have a reason)
+- blocked (waiting on something else)
+
+---
+
+## Issue Template
+
+Standard issue structure organized by category:
+
+```markdown
+### [number]. [Issue Title]
+
+#### Universal
+
+**Status**
+[backlog/selected/in progress/review/done/cancelled/blocked/migrated]
+
+**Description** (optional - recommended)
+[What needs to be done - clear, concise explanation of the issue or feature]
+
+#### Planning (for backlog/selected issues)
+
+**Rationale** (optional)
+[Why this is needed - business/technical justification]
+
+**Acceptance** (optional - recommended)
+[What defines completion - specific, measurable criteria]
+
+**Effort** (optional)
+[Trivial/Small/Medium/Large with optional time estimate like "2-4 hours"]
+
+**Priority** (optional)
+[Low/Medium/High/Critical]
+
+**Dependencies** (optional)
+[What this issue depends on - other issues, external factors, etc.]
+
+#### Work Tracking (for in-progress/done issues)
+
+**Started**
+[YYYY-MM-DD HH:MM TZ]
+
+**Completed** (for done)
+[YYYY-MM-DD HH:MM TZ or just YYYY-MM-DD]
+
+**Commit** (for done)
+[commit hash or multiple hashes for multi-commit work]
+
+**Timeline**
+
+- YYYY-MM-DD HH:MM TZ - [Phase/milestone]: [Activity description]
+- YYYY-MM-DD HH:MM TZ - [Phase/milestone]: [Activity description]
+- ...
+
+#### Documentation (for done issues)
+
+**Solution** (optional)
+[How the issue was solved - implementation approach, key decisions]
+
+**Files Modified** (optional)
+[List of key files changed, especially useful for understanding impact]
+
+#### Bug Details (for bug fixes)
+
+**Discovered** (optional)
+[When/how the bug was found - context about discovery]
+
+**Root Cause** (optional)
+[Technical explanation of what caused the issue]
+
+**Current Behavior** (optional)
+[What happens now - the problematic behavior]
+
+**Expected Behavior** (optional)
+[What should happen - the desired behavior]
+```
+
+---
+
+## Backlog
+
+Issues to choose from for future work.
+
+_No backlog issues_
+
+---
+
+## Selected
+
+Issues selected for upcoming work.
+
+_No selected issues_
+
+---
+
+## In Progress
+
+Issues currently being worked on.
+
+### 1. Fix deletion of receiver methods in method-only files
+
+#### Universal
+
+**Status**
+in progress
+
+**Description**
+When `reorder.Source()` processes a Go file that contains only receiver methods (no type definitions, constants, or package-level functions), it deletes all the method implementations, leaving only the package declaration and imports.
+
+#### Planning
+
+**Rationale**
+This prevents using go-reorder on codebases that organize receiver methods across multiple files, which is a common Go pattern for test helpers, interface implementations split by concern, and large types with methods organized by category.
+
+**Acceptance**
+`reorder.Source()` should reorder methods according to standard section ordering while preserving all method implementations, even in files that contain only receiver methods.
+
+**Effort**
+Medium
+
+**Priority**
+Critical - causes data loss
+
+#### Work Tracking
+
+**Started**
+2026-01-01 23:30 EST
+
+**Timeline**
+
+- 2026-01-01 23:42 EST - COMMIT: Routing to git-workflow to commit fix
+- 2026-01-01 23:42 EST - REFACTOR: Auditor PASS - 0 linter issues, all 16 tests passing
+- 2026-01-01 23:40 EST - REFACTOR: Routing to auditor for code quality review
+- 2026-01-01 23:40 EST - GREEN: Implementer added third pass for method-only typeGroups - all 5 tests passing
+- 2026-01-01 23:37 EST - GREEN: Routing to implementer to fix categorizeDeclarations()
+- 2026-01-01 23:37 EST - RED: failure-debugger created 5 regression tests, identified root cause in categorizeDeclarations()
+- 2026-01-01 23:33 EST - INVESTIGATE: Routing to failure-debugger to reproduce and analyze bug
+- 2026-01-01 23:30 EST - Started: Issue created from bug report
+
+#### Bug Details
+
+**Discovered**
+While attempting to enable go-reorder in CI pipeline for copy-files repository. File `internal/syncengine/sync_test_helpers.go` had all methods deleted during reordering.
+
+**Current Behavior**
+`reorder.Source()` returns a string containing only package declaration and imports. All receiver method implementations are deleted.
+
+**Expected Behavior**
+`reorder.Source()` should preserve all receiver methods and reorder them according to standard section ordering.
+
+---
+
+## Review
+
+Issues ready for review/testing.
+
+_No issues in review_
+
+---
+
+## Done
+
+Completed issues.
+
+_No completed issues_
+
+---
+
+## Cancelled
+
+Issues that will not be completed.
+
+_No cancelled issues_
+
+---
+
+## Blocked
+
+Issues waiting on dependencies.
+
+_No blocked issues_

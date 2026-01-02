@@ -375,6 +375,17 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 		}
 	}
 
+	// Third pass: add method-only typeGroups (no type declaration)
+	for _, tg := range typeGroups {
+		if tg.typeDecl == nil && (len(tg.exportedMethods) > 0 || len(tg.unexportedMethods) > 0) {
+			if isExported(tg.typeName) {
+				cat.exportedTypes = append(cat.exportedTypes, tg)
+			} else {
+				cat.unexportedTypes = append(cat.unexportedTypes, tg)
+			}
+		}
+	}
+
 	// Sort everything
 	sortCategorized(cat)
 

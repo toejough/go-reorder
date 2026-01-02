@@ -645,3 +645,238 @@ func (s *Status) validate() error {
 		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
 	}
 }
+
+// TestSource_MethodsOnlyFile is a regression test for the bug where files containing
+// only receiver methods (no type definition, no constants, no vars, no package-level functions)
+// would have all methods deleted after reorder.Source() processing.
+//
+// This bug occurred because:
+// 1. categorizeDeclarations creates typeGroups for methods even when type definition is absent
+// 2. typeGroup.typeDecl remains nil when no type declaration exists in the file
+// 3. reassembleDeclarations has logic: if typeGrp.typeDecl != nil { add typeDecl }
+// 4. But the methods are added in the SAME loop iteration after the type declaration
+// 5. If typeDecl is nil, we never enter the condition, and continue to next iteration
+// 6. Methods are never added to output, resulting in deletion
+//
+// Expected behavior: Methods should be preserved even when their type is defined elsewhere.
+// This is common in Go projects where types are defined in one file and methods are
+// spread across multiple files for organization.
+func TestSource_MethodsOnlyFile(t *testing.T) {
+	t.Parallel()
+
+	// Simulate a file that only contains methods for Engine type (defined elsewhere)
+	input := `package example
+
+func (e *Engine) SetSourceResizable(resizable bool) {
+	e.sourceResizable = resizable
+}
+
+func (e *Engine) Start() error {
+	return nil
+}
+
+func (e *Engine) stop() {
+	// internal cleanup
+}
+`
+
+	// Expected: Methods should be preserved and reordered (exported first, then unexported, alphabetically)
+	expected := `package example
+
+func (e *Engine) SetSourceResizable(resizable bool) {
+	e.sourceResizable = resizable
+}
+
+func (e *Engine) Start() error {
+	return nil
+}
+
+func (e *Engine) stop() {
+	// internal cleanup
+}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// TestSource_MethodsOnlyFile_MultipleTypes tests the case where a file contains
+// methods for multiple types (all defined elsewhere).
+func TestSource_MethodsOnlyFile_MultipleTypes(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func (s *Server) Stop() error {
+	return nil
+}
+
+func (c *Client) Connect() error {
+	return nil
+}
+
+func (s *Server) Start() error {
+	return nil
+}
+
+func (c *Client) disconnect() {
+	// cleanup
+}
+`
+
+	// Expected: Methods grouped by type, each type's methods sorted (exported first, then unexported)
+	// Since we don't have type definitions, types should be sorted alphabetically: Client, Server
+	expected := `package example
+
+func (c *Client) Connect() error {
+	return nil
+}
+
+func (c *Client) disconnect() {
+	// cleanup
+}
+
+func (s *Server) Start() error {
+	return nil
+}
+
+func (s *Server) Stop() error {
+	return nil
+}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// TestSource_MethodsOnlyFile_ExportedType tests that methods on exported types
+// (defined elsewhere) are categorized correctly as exported type methods.
+func TestSource_MethodsOnlyFile_ExportedType(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func (e *Engine) shutdown() {
+	// internal
+}
+
+func (e *Engine) Start() error {
+	return nil
+}
+`
+
+	expected := `package example
+
+func (e *Engine) Start() error {
+	return nil
+}
+
+func (e *Engine) shutdown() {
+	// internal
+}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// TestSource_MethodsOnlyFile_UnexportedType tests that methods on unexported types
+// (defined elsewhere) are also preserved and categorized correctly.
+func TestSource_MethodsOnlyFile_UnexportedType(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func (e *engine) start() error {
+	return nil
+}
+
+func (e *engine) Stop() error {
+	return nil
+}
+`
+
+	// Methods on unexported type should still be grouped together
+	expected := `package example
+
+func (e *engine) Stop() error {
+	return nil
+}
+
+func (e *engine) start() error {
+	return nil
+}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// TestSource_MixedMethodsAndFunctions tests that a file with both methods (type defined elsewhere)
+// and standalone functions works correctly.
+func TestSource_MixedMethodsAndFunctions(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func (e *Engine) Start() error {
+	return nil
+}
+
+func Helper() {
+	// standalone function
+}
+
+func (e *Engine) stop() {
+	// internal
+}
+`
+
+	expected := `package example
+
+func (e *Engine) Start() error {
+	return nil
+}
+
+func (e *Engine) stop() {
+	// internal
+}
+
+func Helper() {
+	// standalone function
+}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
