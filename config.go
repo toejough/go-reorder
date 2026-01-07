@@ -97,3 +97,9 @@ func (c *Config) Validate() error {
 
 // ErrInvalidConfig is returned when config validation fails.
 var ErrInvalidConfig = errors.New("invalid config")
+
+// LoadConfig loads configuration from a TOML file.
+// If the file doesn't exist, returns default config.
+func LoadConfig(path string) (*Config, error) {
+	return nil, nil
+}

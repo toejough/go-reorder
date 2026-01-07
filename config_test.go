@@ -1,6 +1,10 @@
 package reorder
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
@@ -58,6 +62,102 @@ func TestConfigValidation(t *testing.T) {
 		err := cfg.Validate()
 		if err == nil {
 			t.Error("expected error for invalid mode")
+		}
+	})
+}
+
+func TestLoadConfig(t *testing.T) {
+	t.Run("loads valid TOML file", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.toml")
+		content := `
+[behavior]
+mode = "warn"
+
+[sections]
+order = ["imports", "main", "uncategorized"]
+`
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg, err := LoadConfig(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Behavior.Mode != "warn" {
+			t.Errorf("expected mode warn, got %q", cfg.Behavior.Mode)
+		}
+		if len(cfg.Sections.Order) != 3 {
+			t.Errorf("expected 3 sections, got %d", len(cfg.Sections.Order))
+		}
+	})
+
+	t.Run("missing file returns defaults", func(t *testing.T) {
+		cfg, err := LoadConfig("/nonexistent/path/config.toml")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Behavior.Mode != "strict" {
+			t.Errorf("expected default mode strict, got %q", cfg.Behavior.Mode)
+		}
+		if len(cfg.Sections.Order) != 14 {
+			t.Errorf("expected 14 default sections, got %d", len(cfg.Sections.Order))
+		}
+	})
+
+	t.Run("partial config merges with defaults", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.toml")
+		content := `
+[behavior]
+mode = "append"
+`
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg, err := LoadConfig(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Behavior.Mode != "append" {
+			t.Errorf("expected mode append, got %q", cfg.Behavior.Mode)
+		}
+		// Sections should keep defaults when not specified
+		if len(cfg.Sections.Order) != 14 {
+			t.Errorf("expected 14 default sections, got %d", len(cfg.Sections.Order))
+		}
+	})
+
+	t.Run("invalid TOML returns error", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.toml")
+		content := `this is not valid toml {{{`
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		_, err := LoadConfig(path)
+		if err == nil {
+			t.Error("expected error for invalid TOML")
+		}
+	})
+
+	t.Run("invalid values return error", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.toml")
+		content := `
+[behavior]
+mode = "bogus_mode"
+`
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		_, err := LoadConfig(path)
+		if err == nil {
+			t.Error("expected error for invalid mode value")
 		}
 	})
 }
