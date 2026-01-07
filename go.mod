@@ -2,7 +2,10 @@ module github.com/toejough/go-reorder
 
 go 1.24.0
 
-require github.com/dave/dst v0.27.3
+require (
+	github.com/BurntSushi/toml v1.6.0
+	github.com/dave/dst v0.27.3
+)
 
 require (
 	github.com/google/go-cmp v0.7.0 // indirect

@@ -3,6 +3,9 @@ package reorder
 import (
 	"errors"
 	"fmt"
+	"os"
+
+	"github.com/BurntSushi/toml"
 )
 
 // ValidSections defines all recognized section names.
@@ -101,5 +104,46 @@ var ErrInvalidConfig = errors.New("invalid config")
 // LoadConfig loads configuration from a TOML file.
 // If the file doesn't exist, returns default config.
 func LoadConfig(path string) (*Config, error) {
-	return nil, nil
+	// Start with defaults
+	cfg := DefaultConfig()
+
+	// Check if file exists
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return cfg, nil
+	}
+
+	// Parse TOML into a separate struct to detect what was actually set
+	var fileCfg fileConfig
+	if _, err := toml.DecodeFile(path, &fileCfg); err != nil {
+		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+
+	// Merge file config into defaults
+	if fileCfg.Behavior.Mode != "" {
+		cfg.Behavior.Mode = fileCfg.Behavior.Mode
+	}
+	if fileCfg.Sections.Order != nil {
+		cfg.Sections.Order = fileCfg.Sections.Order
+	}
+
+	// Validate the merged config
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// fileConfig mirrors Config but uses pointers/nil to detect unset values.
+type fileConfig struct {
+	Sections fileSectionsConfig
+	Behavior fileBehaviorConfig
+}
+
+type fileSectionsConfig struct {
+	Order []string
+}
+
+type fileBehaviorConfig struct {
+	Mode string
 }
