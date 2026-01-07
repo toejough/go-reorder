@@ -551,9 +551,235 @@ func TestRoundTrip(t *testing.T) {
 
 ---
 
-## Open Questions
+## Incomplete Config Handling
 
-1. **Config discovery** - Walk up directories looking for `.go-reorder.toml`? Or require explicit path?
-2. **Per-directory configs** - Allow different configs in subdirectories?
-3. **Ignore patterns** - Config option for files/dirs to skip? Or rely on .gitignore?
-4. **Stdin/stdout** - Support `go-reorder < input.go > output.go`?
+### Problem
+
+User's config might not cover all code in their files:
+- Config only lists `func:exported` but file has unexported functions
+- Config omits `uncategorized` entirely
+- Config omits `init` but file has init functions
+
+### Solution: Explicit Mode Flag
+
+**`--mode` flag with four options:**
+
+| Mode | Behavior |
+|------|----------|
+| `strict` | Error if code has no home (default) |
+| `warn` | Append at end + warning |
+| `append` | Silently append at end |
+| `drop` | Intentionally discard unmatched code |
+
+**Examples:**
+
+```bash
+# Default - error on incomplete config
+$ go-reorder .
+error: main.go has unexported functions but config has no "func:unexported" section
+hint: use --mode=append to add unmatched code at end
+      or --mode=drop to intentionally discard it
+
+# Append mode - keep everything, put strays at end
+$ go-reorder --mode=warn .
+warning: main.go: appending 3 unexported functions (no matching section in config)
+
+# Drop mode - intentionally split a file
+$ go-reorder --mode=drop --config=exported-only.toml src.go > exported.go
+$ go-reorder --mode=drop --config=unexported-only.toml src.go > unexported.go
+```
+
+**Config default:**
+
+```toml
+[behavior]
+# "strict" (default) | "warn" | "append" | "drop"
+unmatched = "strict"
+```
+
+CLI `--mode` flag overrides config setting.
+
+### Implementation
+
+```go
+func reassembleDeclarations(cat *categorizedDecls, cfg *Config) ([]dst.Decl, error) {
+    var decls []dst.Decl
+    emitted := make(map[string]bool)
+
+    // Emit sections in config order
+    for _, section := range cfg.Sections.Order {
+        emitter, ok := emitters[section]
+        if !ok {
+            continue
+        }
+        emitted[section] = true
+        decls = append(decls, emitter(cat, cfg)...)
+    }
+
+    // Check for unemitted code
+    unemitted := findUnemittedCode(cat, emitted)
+    if len(unemitted) > 0 {
+        switch cfg.Behavior.Mode {
+        case "strict":
+            return nil, &UnmatchedCodeError{Sections: unemitted}
+        case "warn":
+            log.Printf("warning: appending unmatched sections: %v", unemitted)
+            fallthrough
+        case "append":
+            for _, section := range unemitted {
+                decls = append(decls, emitters[section](cat, cfg)...)
+            }
+        case "drop":
+            // Intentionally discard - user wants to split/filter
+            // Skip the count validation below
+            return decls, nil
+        }
+    }
+
+    // Final validation - count must match (unless drop mode)
+    if len(decls) != cat.inputCount {
+        return nil, fmt.Errorf("declaration count mismatch: input %d, output %d",
+            cat.inputCount, len(decls))
+    }
+
+    return decls, nil
+}
+
+func findUnemittedCode(cat *categorizedDecls, emitted map[string]bool) []string {
+    var missing []string
+
+    if len(cat.unexportedFuncs) > 0 && !emitted["func:unexported"] {
+        missing = append(missing, "func:unexported")
+    }
+    if len(cat.initFuncs) > 0 && !emitted["init"] {
+        missing = append(missing, "init")
+    }
+    // ... check all sections
+
+    return missing
+}
+```
+
+### Error Messages
+
+Clear, actionable errors:
+
+```
+error: src/parser.go has code with no matching config section:
+  - 2 init functions (add "init" to sections.order)
+  - 5 unexported variables (add "var:unexported" to sections.order)
+
+hint: use --mode=append to add unmatched code at end
+      use --mode=drop to intentionally discard
+      or add missing sections to your .go-reorder.toml
+```
+
+---
+
+## Config Discovery
+
+### Default Behavior
+
+Walk up from current directory to project root (`.git`, `go.mod`, or filesystem root), looking for `.go-reorder.toml`.
+
+```bash
+# Uses first .go-reorder.toml found walking up from cwd
+$ go-reorder .
+
+# Explicit config path overrides discovery
+$ go-reorder --config=/path/to/custom.toml .
+```
+
+### Per-Directory Configs
+
+Configs in subdirectories override parent configs for that subtree:
+
+```
+project/
+├── .go-reorder.toml          # applies to project root
+├── pkg/
+│   ├── .go-reorder.toml      # overrides for pkg/ and below
+│   └── parser/
+│       └── parser.go         # uses pkg/.go-reorder.toml
+├── cmd/
+│   └── main.go               # uses project/.go-reorder.toml
+└── internal/
+    ├── .go-reorder.toml      # overrides for internal/
+    └── util/
+        ├── .go-reorder.toml  # overrides for util/ only
+        └── helpers.go        # uses internal/util/.go-reorder.toml
+```
+
+**CLI output is loud about which config applies:**
+
+```
+$ go-reorder .
+using config: .go-reorder.toml
+  cmd/main.go ... ok
+  pkg/parser/parser.go ... ok
+using config: pkg/.go-reorder.toml
+  pkg/lexer/lexer.go ... ok
+using config: internal/.go-reorder.toml
+  internal/core.go ... ok
+using config: internal/util/.go-reorder.toml
+  internal/util/helpers.go ... ok
+```
+
+---
+
+## File Patterns
+
+Include and exclude patterns using fish glob syntax. Later patterns override earlier ones.
+
+### Config
+
+```toml
+[files]
+# Patterns evaluated in order, later overrides earlier
+patterns = [
+  "**/*.go",           # include all Go files
+  "!vendor/**",        # exclude vendor
+  "!**/*_test.go",     # exclude tests
+  "vendor/kept/**",    # but include this specific vendor path
+]
+```
+
+### CLI Flags
+
+```bash
+# Override config patterns
+$ go-reorder --include="**/*.go" --exclude="vendor/**" .
+
+# Multiple patterns, order matters
+$ go-reorder --include="**/*.go" --exclude="**/*_test.go" --include="critical_test.go" .
+```
+
+### Pattern Syntax (Fish Globs)
+
+| Pattern | Matches |
+|---------|---------|
+| `*.go` | Go files in current dir |
+| `**/*.go` | Go files recursively |
+| `!vendor/**` | Exclude vendor tree |
+| `pkg/*/` | Directories directly under pkg |
+| `{a,b}/*.go` | Go files in a/ or b/ |
+
+---
+
+## Stdin/Stdout Support
+
+```bash
+# Pipe mode - read stdin, write stdout
+$ cat input.go | go-reorder > output.go
+
+# Explicit stdin
+$ go-reorder - < input.go > output.go
+
+# With config (required for stdin since no directory to discover from)
+$ go-reorder --config=my.toml - < input.go
+```
+
+When reading from stdin:
+- Config must be explicit (`--config`) or use defaults
+- Mode defaults apply (`--mode=strict` unless overridden)
+- Output always goes to stdout
