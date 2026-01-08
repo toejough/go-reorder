@@ -128,7 +128,51 @@ func Source(src string) (string, error) {
 
 // SourceWithConfig reorders declarations using the provided configuration.
 func SourceWithConfig(src string, cfg *Config) (string, error) {
-	return "", nil // stub
+	dec := decorator.NewDecorator(token.NewFileSet())
+
+	file, err := dec.Parse(src)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse source: %w", err)
+	}
+
+	err = FileWithConfig(file, cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to reorder: %w", err)
+	}
+
+	var buf bytes.Buffer
+
+	res := decorator.NewRestorer()
+
+	err = res.Fprint(&buf, file)
+	if err != nil {
+		return "", fmt.Errorf("failed to print: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+// FileWithConfig reorders declarations in a dst.File using the provided configuration.
+func FileWithConfig(file *dst.File, cfg *Config) error {
+	categorized := categorizeDeclarations(file)
+	reordered := reassembleDeclarationsWithConfig(categorized, cfg)
+	file.Decls = reordered
+
+	return nil
+}
+
+// reassembleDeclarationsWithConfig builds the ordered declaration list using config.
+func reassembleDeclarationsWithConfig(cat *categorizedDecls, cfg *Config) []dst.Decl {
+	decls := make([]dst.Decl, 0)
+
+	for _, section := range cfg.Sections.Order {
+		emitter := getEmitter(section)
+		if emitter != nil {
+			decls = append(decls, emitter(cat)...)
+		}
+	}
+
+	return decls
 }
 
 // categorizedDecls holds declarations organized by category.
