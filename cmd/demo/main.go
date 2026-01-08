@@ -2,28 +2,30 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/toejough/go-reorder"
+	"github.com/toejough/targ"
 )
 
-func main() {
-	path := ""
-	if len(os.Args) > 1 {
-		path = os.Args[1]
-	}
+// Demo loads and displays a go-reorder config file.
+type Demo struct {
+	Config string `targ:"positional,desc=Path to config.toml (omit for defaults)"`
+}
 
+func (d *Demo) Description() string {
+	return "Load and display a go-reorder config file"
+}
+
+func (d *Demo) Run() error {
+	path := d.Config
 	if path == "" {
-		fmt.Println("Usage: go run ./cmd/demo <config.toml>")
-		fmt.Println("       go run ./cmd/demo (no args = show defaults)")
-		fmt.Println()
 		path = "/nonexistent" // triggers defaults
+		fmt.Println("No config specified, showing defaults\n")
 	}
 
 	cfg, err := reorder.LoadConfig(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	fmt.Printf("Mode: %s\n\n", cfg.Behavior.Mode)
@@ -31,4 +33,9 @@ func main() {
 	for i, s := range cfg.Sections.Order {
 		fmt.Printf("  %2d. %s\n", i+1, s)
 	}
+	return nil
+}
+
+func main() {
+	targ.Run(&Demo{})
 }
