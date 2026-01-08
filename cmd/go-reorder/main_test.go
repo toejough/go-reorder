@@ -517,3 +517,45 @@ func Helper() {}
 		t.Errorf("expected test files to be excluded, got: %s", stderrStr)
 	}
 }
+
+func TestCLIStdin(t *testing.T) {
+	content := `package test
+
+func Helper() {}
+
+const Version = "1.0"
+`
+	stdin := strings.NewReader(content)
+	var stdout, stderr bytes.Buffer
+
+	exitCode := runCLIWithStdin([]string{"-"}, stdin, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
+	}
+
+	// Output should be reordered
+	output := stdout.String()
+	constPos := strings.Index(output, "const")
+	funcPos := strings.Index(output, "func Helper")
+	if constPos > funcPos || constPos == -1 {
+		t.Errorf("expected const before func in reordered output, got: %s", output)
+	}
+}
+
+func TestCLIStdinWithMode(t *testing.T) {
+	content := `package test
+
+func Helper() {}
+
+const Version = "1.0"
+`
+	stdin := strings.NewReader(content)
+	var stdout, stderr bytes.Buffer
+
+	exitCode := runCLIWithStdin([]string{"--mode", "drop", "-"}, stdin, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
+	}
+}
