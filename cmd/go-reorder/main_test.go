@@ -446,3 +446,74 @@ const Version = "1.0"
 		t.Errorf("expected dropped code to be removed (config discovery), got: %s", output)
 	}
 }
+
+func TestCLIExcludeFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create files
+	if err := os.MkdirAll(filepath.Join(tmpDir, "vendor"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	content := `package test
+
+func Helper() {}
+`
+	// Regular file
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Vendor file (should be excluded)
+	if err := os.WriteFile(filepath.Join(tmpDir, "vendor", "lib.go"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exitCode := runCLI([]string{"--exclude", "vendor/**", "--write", tmpDir}, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
+	}
+
+	// stderr should show main.go but not vendor/lib.go
+	stderrStr := stderr.String()
+	if !strings.Contains(stderrStr, "main.go") {
+		t.Errorf("expected main.go to be processed, got: %s", stderrStr)
+	}
+	if strings.Contains(stderrStr, "vendor") {
+		t.Errorf("expected vendor to be excluded, got: %s", stderrStr)
+	}
+}
+
+func TestCLIExcludeTestFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	content := `package test
+
+func Helper() {}
+`
+	// Regular file
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Test file (should be excluded)
+	if err := os.WriteFile(filepath.Join(tmpDir, "main_test.go"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exitCode := runCLI([]string{"--exclude", "*_test.go", "--write", tmpDir}, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
+	}
+
+	// stderr should show main.go but not main_test.go
+	stderrStr := stderr.String()
+	if !strings.Contains(stderrStr, "main.go") {
+		t.Errorf("expected main.go to be processed, got: %s", stderrStr)
+	}
+	if strings.Contains(stderrStr, "_test.go") {
+		t.Errorf("expected test files to be excluded, got: %s", stderrStr)
+	}
+}
