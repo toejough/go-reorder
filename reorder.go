@@ -163,6 +163,17 @@ func FileWithConfig(file *dst.File, cfg *Config) error {
 
 // reassembleDeclarationsWithConfig builds the ordered declaration list using config.
 func reassembleDeclarationsWithConfig(cat *categorizedDecls, cfg *Config) []dst.Decl {
+	// Build set of sections in config
+	configSections := make(map[string]bool)
+	for _, s := range cfg.Sections.Order {
+		configSections[s] = true
+	}
+
+	// Collect uncategorized from sections not in config (if mode allows)
+	if cfg.Behavior.Mode != "drop" {
+		collectUncategorized(cat, configSections)
+	}
+
 	decls := make([]dst.Decl, 0)
 
 	for _, section := range cfg.Sections.Order {
@@ -175,10 +186,46 @@ func reassembleDeclarationsWithConfig(cat *categorizedDecls, cfg *Config) []dst.
 	return decls
 }
 
+// collectUncategorized moves declarations from excluded sections to uncategorized.
+func collectUncategorized(cat *categorizedDecls, includedSections map[string]bool) {
+	if !includedSections["exported_consts"] && len(cat.exportedConsts) > 0 {
+		cat.uncategorized = append(cat.uncategorized, mergeConstSpecs(cat.exportedConsts, "Exported constants."))
+		cat.exportedConsts = nil
+	}
+	if !includedSections["exported_vars"] && len(cat.exportedVars) > 0 {
+		cat.uncategorized = append(cat.uncategorized, mergeVarSpecs(cat.exportedVars, "Exported variables."))
+		cat.exportedVars = nil
+	}
+	if !includedSections["exported_funcs"] {
+		for _, fn := range cat.exportedFuncs {
+			fn.Decs.Before = dst.EmptyLine
+			cat.uncategorized = append(cat.uncategorized, fn)
+		}
+		cat.exportedFuncs = nil
+	}
+	if !includedSections["unexported_consts"] && len(cat.unexportedConsts) > 0 {
+		cat.uncategorized = append(cat.uncategorized, mergeConstSpecs(cat.unexportedConsts, "unexported constants."))
+		cat.unexportedConsts = nil
+	}
+	if !includedSections["unexported_vars"] && len(cat.unexportedVars) > 0 {
+		cat.uncategorized = append(cat.uncategorized, mergeVarSpecs(cat.unexportedVars, "unexported variables."))
+		cat.unexportedVars = nil
+	}
+	if !includedSections["unexported_funcs"] {
+		for _, fn := range cat.unexportedFuncs {
+			fn.Decs.Before = dst.EmptyLine
+			cat.uncategorized = append(cat.uncategorized, fn)
+		}
+		cat.unexportedFuncs = nil
+	}
+	// Note: types and enums are more complex, skipping for now
+}
+
 // categorizedDecls holds declarations organized by category.
 type categorizedDecls struct {
 	imports          []dst.Decl
 	main             *dst.FuncDecl
+	init             []*dst.FuncDecl
 	exportedConsts   []*dst.ValueSpec
 	exportedEnums    []*enumGroup
 	exportedVars     []*dst.ValueSpec
@@ -189,6 +236,7 @@ type categorizedDecls struct {
 	unexportedVars   []*dst.ValueSpec
 	unexportedTypes  []*typeGroup
 	unexportedFuncs  []*dst.FuncDecl
+	uncategorized    []dst.Decl
 }
 
 // enumGroup pairs an enum type with its iota const block and associated methods.
@@ -322,6 +370,8 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 			switch {
 			case genDecl.Name.Name == "main" && genDecl.Recv == nil:
 				cat.main = genDecl
+			case genDecl.Name.Name == "init" && genDecl.Recv == nil:
+				cat.init = append(cat.init, genDecl)
 			case genDecl.Recv != nil:
 				// Method - associate with type
 				typeName := extractReceiverTypeName(genDecl.Recv)

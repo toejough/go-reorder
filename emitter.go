@@ -47,8 +47,12 @@ func emitMain(cat *categorizedDecls, _ *Config) []dst.Decl {
 }
 
 func emitInit(cat *categorizedDecls, _ *Config) []dst.Decl {
-	// TODO: Phase 6 will add init function handling
-	return []dst.Decl{}
+	decls := make([]dst.Decl, 0, len(cat.init))
+	for _, fn := range cat.init {
+		fn.Decs.Before = dst.EmptyLine
+		decls = append(decls, fn)
+	}
+	return decls
 }
 
 func emitExportedConsts(cat *categorizedDecls, _ *Config) []dst.Decl {
@@ -104,8 +108,10 @@ func emitUnexportedFuncs(cat *categorizedDecls, _ *Config) []dst.Decl {
 }
 
 func emitUncategorized(cat *categorizedDecls, _ *Config) []dst.Decl {
-	// TODO: Phase 6 will add uncategorized handling
-	return []dst.Decl{}
+	if cat.uncategorized == nil {
+		return []dst.Decl{}
+	}
+	return cat.uncategorized
 }
 
 // emitEnumGroups emits all enum groups using the specified layout.
