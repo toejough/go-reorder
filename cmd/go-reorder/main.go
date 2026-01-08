@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/toejough/go-reorder"
 	"github.com/toejough/targ"
@@ -15,12 +16,13 @@ import (
 
 // CLI represents the go-reorder command.
 type CLI struct {
-	Write  bool   `targ:"flag,short=w,desc=Write result to source file instead of stdout"`
-	Check  bool   `targ:"flag,short=c,desc=Check if files are properly ordered (exit 1 if not)"`
-	Diff   bool   `targ:"flag,short=d,desc=Display diff instead of reordered source"`
-	Config string `targ:"flag,name=config,desc=Path to config file"`
-	Mode   string `targ:"flag,name=mode,desc=Behavior mode (strict|warn|append|drop)"`
-	Path   string `targ:"positional,placeholder=PATH,desc=File or directory to process"`
+	Write   bool     `targ:"flag,short=w,desc=Write result to source file instead of stdout"`
+	Check   bool     `targ:"flag,short=c,desc=Check if files are properly ordered (exit 1 if not)"`
+	Diff    bool     `targ:"flag,short=d,desc=Display diff instead of reordered source"`
+	Config  string   `targ:"flag,name=config,desc=Path to config file"`
+	Mode    string   `targ:"flag,name=mode,desc=Behavior mode (strict|warn|append|drop)"`
+	Exclude []string `targ:"flag,name=exclude,desc=Exclude files matching pattern (can be repeated)"`
+	Path    string   `targ:"positional,placeholder=PATH,desc=File or directory to process"`
 }
 
 // Reorder Go source files.
@@ -41,6 +43,9 @@ func (c *CLI) Run() error {
 	}
 	if c.Mode != "" {
 		args = append(args, "--mode", c.Mode)
+	}
+	for _, pattern := range c.Exclude {
+		args = append(args, "--exclude", pattern)
 	}
 	if c.Path != "" {
 		args = append(args, c.Path)
@@ -71,7 +76,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// Discover all Go files first (needed for config discovery)
-	goFiles, err := discoverFiles(files)
+	goFiles, err := discoverFiles(files, opts.exclude)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "Error discovering files: %v\n", err)
 		return 1
@@ -141,11 +146,12 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 }
 
 type cliOptions struct {
-	write  bool
-	check  bool
-	diff   bool
-	config string
-	mode   string
+	write   bool
+	check   bool
+	diff    bool
+	config  string
+	mode    string
+	exclude []string
 }
 
 func parseArgs(args []string) (cliOptions, []string, error) {
@@ -178,6 +184,14 @@ func parseArgs(args []string) (cliOptions, []string, error) {
 			opts.mode = args[i]
 		case strings.HasPrefix(arg, "--mode="):
 			opts.mode = strings.TrimPrefix(arg, "--mode=")
+		case arg == "--exclude":
+			if i+1 >= len(args) {
+				return opts, nil, fmt.Errorf("--exclude requires a value")
+			}
+			i++
+			opts.exclude = append(opts.exclude, args[i])
+		case strings.HasPrefix(arg, "--exclude="):
+			opts.exclude = append(opts.exclude, strings.TrimPrefix(arg, "--exclude="))
 		case strings.HasPrefix(arg, "-") && arg != "-":
 			return opts, nil, fmt.Errorf("unknown flag: %s", arg)
 		default:
@@ -188,7 +202,7 @@ func parseArgs(args []string) (cliOptions, []string, error) {
 	return opts, files, nil
 }
 
-func discoverFiles(paths []string) ([]string, error) {
+func discoverFiles(paths []string, excludePatterns []string) ([]string, error) {
 	var files []string
 
 	for _, p := range paths {
@@ -200,12 +214,15 @@ func discoverFiles(paths []string) ([]string, error) {
 		if !info.IsDir() {
 			// Single file
 			if strings.HasSuffix(p, ".go") {
-				files = append(files, p)
+				if !isExcluded(p, excludePatterns) {
+					files = append(files, p)
+				}
 			}
 			continue
 		}
 
 		// Directory: walk recursively
+		baseDir := p
 		err = filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -214,7 +231,14 @@ func discoverFiles(paths []string) ([]string, error) {
 				return nil
 			}
 			if strings.HasSuffix(path, ".go") {
-				files = append(files, path)
+				// Get relative path for pattern matching
+				relPath, err := filepath.Rel(baseDir, path)
+				if err != nil {
+					relPath = path
+				}
+				if !isExcluded(relPath, excludePatterns) {
+					files = append(files, path)
+				}
 			}
 			return nil
 		})
@@ -224,6 +248,21 @@ func discoverFiles(paths []string) ([]string, error) {
 	}
 
 	return files, nil
+}
+
+// isExcluded checks if a path matches any of the exclude patterns.
+func isExcluded(path string, patterns []string) bool {
+	for _, pattern := range patterns {
+		matched, err := doublestar.Match(pattern, path)
+		if err == nil && matched {
+			return true
+		}
+		// Also check the base name for patterns like "*_test.go"
+		if matched, err := doublestar.Match(pattern, filepath.Base(path)); err == nil && matched {
+			return true
+		}
+	}
+	return false
 }
 
 func processFile(path string, cfg *reorder.Config, opts cliOptions, stdout, stderr io.Writer) (bool, error) {
