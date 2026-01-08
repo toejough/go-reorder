@@ -1,0 +1,9 @@
+# Custom type layout: methods before constructors
+[sections]
+order = ["imports", "exported_types", "exported_funcs", "uncategorized"]
+
+[types]
+type_layout = ["typedef", "exported_methods", "unexported_methods", "constructors"]
+
+[behavior]
+mode = "append"

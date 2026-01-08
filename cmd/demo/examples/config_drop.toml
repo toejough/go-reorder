@@ -1,0 +1,6 @@
+# Only keep funcs - drop everything else
+[sections]
+order = ["exported_funcs"]
+
+[behavior]
+mode = "drop"

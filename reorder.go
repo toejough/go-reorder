@@ -218,7 +218,92 @@ func collectUncategorized(cat *categorizedDecls, includedSections map[string]boo
 		}
 		cat.unexportedFuncs = nil
 	}
-	// Note: types and enums are more complex, skipping for now
+	// Handle types (includes type decl, constructors, methods)
+	if !includedSections["exported_types"] {
+		for _, tg := range cat.exportedTypes {
+			if tg.typeDecl != nil {
+				tg.typeDecl.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, tg.typeDecl)
+			}
+			for _, ctor := range tg.constructors {
+				ctor.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, ctor)
+			}
+			for _, m := range tg.exportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+			for _, m := range tg.unexportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+		}
+		cat.exportedTypes = nil
+	}
+	if !includedSections["unexported_types"] {
+		for _, tg := range cat.unexportedTypes {
+			if tg.typeDecl != nil {
+				tg.typeDecl.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, tg.typeDecl)
+			}
+			for _, ctor := range tg.constructors {
+				ctor.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, ctor)
+			}
+			for _, m := range tg.exportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+			for _, m := range tg.unexportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+		}
+		cat.unexportedTypes = nil
+	}
+	// Handle enums (includes type decl, iota const, methods)
+	if !includedSections["exported_enums"] {
+		for _, eg := range cat.exportedEnums {
+			if eg.typeDecl != nil {
+				eg.typeDecl.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, eg.typeDecl)
+			}
+			if eg.constDecl != nil {
+				eg.constDecl.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, eg.constDecl)
+			}
+			for _, m := range eg.exportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+			for _, m := range eg.unexportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+		}
+		cat.exportedEnums = nil
+	}
+	if !includedSections["unexported_enums"] {
+		for _, eg := range cat.unexportedEnums {
+			if eg.typeDecl != nil {
+				eg.typeDecl.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, eg.typeDecl)
+			}
+			if eg.constDecl != nil {
+				eg.constDecl.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, eg.constDecl)
+			}
+			for _, m := range eg.exportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+			for _, m := range eg.unexportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+		}
+		cat.unexportedEnums = nil
+	}
 }
 
 // categorizedDecls holds declarations organized by category.
