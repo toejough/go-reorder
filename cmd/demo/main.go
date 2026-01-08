@@ -20,7 +20,7 @@ func (d *Demo) Run() error {
 	path := d.Config
 	if path == "" {
 		path = "/nonexistent" // triggers defaults
-		fmt.Println("No config specified, showing defaults\n")
+		fmt.Println("No config specified, showing defaults")
 	}
 
 	cfg, err := reorder.LoadConfig(path)

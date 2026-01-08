@@ -126,6 +126,11 @@ func Source(src string) (string, error) {
 	return buf.String(), nil
 }
 
+// SourceWithConfig reorders declarations using the provided configuration.
+func SourceWithConfig(src string, cfg *Config) (string, error) {
+	return "", nil // stub
+}
+
 // categorizedDecls holds declarations organized by category.
 type categorizedDecls struct {
 	imports          []dst.Decl
