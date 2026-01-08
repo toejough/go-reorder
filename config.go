@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 )
@@ -219,4 +220,47 @@ type fileTypesConfig struct {
 
 type fileBehaviorConfig struct {
 	Mode string
+}
+
+// ConfigFileName is the name of the config file to look for.
+const ConfigFileName = ".go-reorder.toml"
+
+// FindConfig searches for a config file starting from the given directory,
+// walking up the directory tree until it finds one or reaches a boundary.
+// Returns empty string if no config file is found.
+// Boundaries are: .git directory, go.mod file, or filesystem root.
+func FindConfig(startDir string) (string, error) {
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		// Check for config file in current directory
+		configPath := filepath.Join(dir, ConfigFileName)
+		if _, err := os.Stat(configPath); err == nil {
+			return configPath, nil
+		}
+
+		// Check for boundaries
+		gitPath := filepath.Join(dir, ".git")
+		goModPath := filepath.Join(dir, "go.mod")
+
+		if _, err := os.Stat(gitPath); err == nil {
+			// Found .git, stop here (don't go above)
+			return "", nil
+		}
+		if _, err := os.Stat(goModPath); err == nil {
+			// Found go.mod, stop here (don't go above)
+			return "", nil
+		}
+
+		// Move to parent directory
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached filesystem root
+			return "", nil
+		}
+		dir = parent
+	}
 }

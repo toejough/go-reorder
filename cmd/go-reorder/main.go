@@ -70,6 +70,18 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	// Discover all Go files first (needed for config discovery)
+	goFiles, err := discoverFiles(files)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error discovering files: %v\n", err)
+		return 1
+	}
+
+	if len(goFiles) == 0 {
+		_, _ = fmt.Fprintf(stderr, "Error: no Go files found\n")
+		return 1
+	}
+
 	// Load config
 	var cfg *reorder.Config
 	if opts.config != "" {
@@ -84,24 +96,27 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 	} else {
-		cfg = reorder.DefaultConfig()
+		// Try to discover config based on first file's directory
+		firstFileDir := filepath.Dir(goFiles[0])
+		configPath, err := reorder.FindConfig(firstFileDir)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "Error finding config: %v\n", err)
+			return 1
+		}
+		if configPath != "" {
+			cfg, err = reorder.LoadConfig(configPath)
+			if err != nil {
+				_, _ = fmt.Fprintf(stderr, "Error loading config: %v\n", err)
+				return 1
+			}
+		} else {
+			cfg = reorder.DefaultConfig()
+		}
 	}
 
 	// Override mode if specified via flag
 	if opts.mode != "" {
 		cfg.Behavior.Mode = opts.mode
-	}
-
-	// Discover all Go files
-	goFiles, err := discoverFiles(files)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error discovering files: %v\n", err)
-		return 1
-	}
-
-	if len(goFiles) == 0 {
-		_, _ = fmt.Fprintf(stderr, "Error: no Go files found\n")
-		return 1
 	}
 
 	// Process each file

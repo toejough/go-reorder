@@ -392,3 +392,57 @@ func Helper() {}
 		t.Errorf("expected stderr to show file being processed, got: %s", stderr.String())
 	}
 }
+
+func TestCLIConfigDiscovery(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create .git to establish boundary
+	gitDir := filepath.Join(tmpDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create subdirectory
+	subDir := filepath.Join(tmpDir, "pkg")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create config at root with drop mode
+	configPath := filepath.Join(tmpDir, ".go-reorder.toml")
+	configContent := `[sections]
+order = ["imports", "main"]
+
+[behavior]
+mode = "drop"
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create test file in subdirectory
+	inputFile := filepath.Join(subDir, "test.go")
+	content := `package test
+
+func Helper() {}
+
+const Version = "1.0"
+`
+	if err := os.WriteFile(inputFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Run CLI without --config, should discover the config
+	var stdout, stderr bytes.Buffer
+	exitCode := runCLI([]string{inputFile}, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
+	}
+
+	// Output should not contain Helper or Version (they were dropped by discovered config)
+	output := stdout.String()
+	if strings.Contains(output, "Helper") || strings.Contains(output, "Version") {
+		t.Errorf("expected dropped code to be removed (config discovery), got: %s", output)
+	}
+}
