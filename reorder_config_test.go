@@ -167,3 +167,114 @@ const (
 		t.Errorf("Expected iota const before typedef, got:\n%s", result)
 	}
 }
+
+func TestSourceWithConfig_InitFunctions(t *testing.T) {
+	input := `package example
+
+func helper() {}
+
+func init() {
+	// first init
+}
+
+const Version = "1.0"
+
+func init() {
+	// second init
+}
+`
+	cfg := reorder.DefaultConfig()
+	result, err := reorder.SourceWithConfig(input, cfg)
+	if err != nil {
+		t.Fatalf("SourceWithConfig failed: %v", err)
+	}
+
+	// Verify both init functions are present
+	if !hasSubstring(result, "// first init") {
+		t.Error("first init function missing")
+	}
+	if !hasSubstring(result, "// second init") {
+		t.Error("second init function missing")
+	}
+
+	// Verify init functions maintain relative order
+	if !containsInOrder(result, "// first init", "// second init") {
+		t.Errorf("init functions not in original order:\n%s", result)
+	}
+}
+
+func TestSourceWithConfig_InitAfterMain(t *testing.T) {
+	input := `package example
+
+func init() {}
+
+func main() {}
+`
+	cfg := reorder.DefaultConfig()
+	result, err := reorder.SourceWithConfig(input, cfg)
+	if err != nil {
+		t.Fatalf("SourceWithConfig failed: %v", err)
+	}
+
+	// Default order: main comes before init
+	if !containsInOrder(result, "func main()", "func init()") {
+		t.Errorf("Expected main before init:\n%s", result)
+	}
+}
+
+func TestSourceWithConfig_ModeAppend(t *testing.T) {
+	input := `package example
+
+func Helper() {}
+
+const Version = "1.0"
+`
+	// Config that only includes imports - Helper and Version are "uncategorized"
+	cfg := reorder.DefaultConfig()
+	cfg.Sections.Order = []string{"imports", "uncategorized"}
+	cfg.Behavior.Mode = "append"
+
+	result, err := reorder.SourceWithConfig(input, cfg)
+	if err != nil {
+		t.Fatalf("SourceWithConfig failed: %v", err)
+	}
+
+	// Both should be present in uncategorized
+	if !hasSubstring(result, "func Helper()") {
+		t.Error("Helper function missing")
+	}
+	if !hasSubstring(result, "Version") {
+		t.Error("Version const missing")
+	}
+}
+
+func TestSourceWithConfig_ModeDrop(t *testing.T) {
+	input := `package example
+
+func Helper() {}
+
+const Version = "1.0"
+`
+	// Config that only includes exported_funcs - Version const should be dropped
+	cfg := reorder.DefaultConfig()
+	cfg.Sections.Order = []string{"exported_funcs"}
+	cfg.Behavior.Mode = "drop"
+
+	result, err := reorder.SourceWithConfig(input, cfg)
+	if err != nil {
+		t.Fatalf("SourceWithConfig failed: %v", err)
+	}
+
+	// Helper should be present
+	if !hasSubstring(result, "func Helper()") {
+		t.Error("Helper function missing")
+	}
+	// Version should be dropped
+	if hasSubstring(result, "Version") {
+		t.Error("Version const should have been dropped")
+	}
+}
+
+func hasSubstring(s, sub string) bool {
+	return indexOf(s, sub) != -1
+}
