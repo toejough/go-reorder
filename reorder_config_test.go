@@ -108,3 +108,62 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+func TestSourceWithConfig_TypeLayout_MethodsBeforeConstructors(t *testing.T) {
+	input := `package example
+
+type Server struct{}
+
+func NewServer() *Server { return &Server{} }
+
+func (s *Server) Start() {}
+`
+	cfg := reorder.DefaultConfig()
+	// Put methods before constructors
+	cfg.Types.TypeLayout = []string{
+		"typedef",
+		"exported_methods",
+		"unexported_methods",
+		"constructors",
+	}
+
+	result, err := reorder.SourceWithConfig(input, cfg)
+	if err != nil {
+		t.Fatalf("SourceWithConfig failed: %v", err)
+	}
+
+	// Verify Start() appears before NewServer in output
+	if !containsInOrder(result, "func (s *Server) Start()", "func NewServer()") {
+		t.Errorf("Expected Start before NewServer, got:\n%s", result)
+	}
+}
+
+func TestSourceWithConfig_EnumLayout_IotaBeforeTypedef(t *testing.T) {
+	input := `package example
+
+type Status int
+
+const (
+	StatusPending Status = iota
+	StatusActive
+)
+`
+	cfg := reorder.DefaultConfig()
+	// Put iota before typedef
+	cfg.Types.EnumLayout = []string{
+		"iota",
+		"typedef",
+		"exported_methods",
+		"unexported_methods",
+	}
+
+	result, err := reorder.SourceWithConfig(input, cfg)
+	if err != nil {
+		t.Fatalf("SourceWithConfig failed: %v", err)
+	}
+
+	// Verify const block appears before type declaration in output
+	if !containsInOrder(result, "StatusPending", "type Status int") {
+		t.Errorf("Expected iota const before typedef, got:\n%s", result)
+	}
+}
