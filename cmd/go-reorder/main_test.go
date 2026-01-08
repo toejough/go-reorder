@@ -275,3 +275,108 @@ const Version = "1.0"
 		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
 	}
 }
+
+func TestCLIModeFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create config that excludes some sections
+	configFile := filepath.Join(tmpDir, "reorder.toml")
+	configContent := `[sections]
+order = ["imports", "main"]
+
+[behavior]
+mode = "strict"
+`
+	if err := os.WriteFile(configFile, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	// Create test file with code that won't fit in the limited sections
+	inputFile := filepath.Join(tmpDir, "test.go")
+	content := `package test
+
+func Helper() {}
+
+const Version = "1.0"
+`
+	if err := os.WriteFile(inputFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	t.Run("mode=drop discards unmatched", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		exitCode := runCLI([]string{"--config", configFile, "--mode", "drop", inputFile}, &stdout, &stderr)
+
+		if exitCode != 0 {
+			t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
+		}
+
+		// Output should not contain Helper or Version (they were dropped)
+		output := stdout.String()
+		if strings.Contains(output, "Helper") || strings.Contains(output, "Version") {
+			t.Errorf("expected dropped code to be removed, got: %s", output)
+		}
+	})
+
+	t.Run("mode=append appends unmatched silently", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		exitCode := runCLI([]string{"--config", configFile, "--mode", "append", inputFile}, &stdout, &stderr)
+
+		if exitCode != 0 {
+			t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
+		}
+
+		// Output should contain the appended code
+		output := stdout.String()
+		if !strings.Contains(output, "Helper") || !strings.Contains(output, "Version") {
+			t.Errorf("expected appended code to be present, got: %s", output)
+		}
+	})
+}
+
+func TestCLIMissingConfigError(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputFile := filepath.Join(tmpDir, "test.go")
+	content := `package test
+
+func Helper() {}
+`
+	if err := os.WriteFile(inputFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exitCode := runCLI([]string{"--config", "/nonexistent/config.toml", inputFile}, &stdout, &stderr)
+
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1 for missing config, got %d", exitCode)
+	}
+
+	if !strings.Contains(stderr.String(), "Error") {
+		t.Errorf("expected error message in stderr, got: %s", stderr.String())
+	}
+}
+
+func TestCLIShowsFileBeingProcessed(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputFile := filepath.Join(tmpDir, "test.go")
+	content := `package test
+
+func Helper() {}
+`
+	if err := os.WriteFile(inputFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exitCode := runCLI([]string{"--write", inputFile}, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
+	}
+
+	// stderr should show which file was processed
+	if !strings.Contains(stderr.String(), "test.go") {
+		t.Errorf("expected stderr to show file being processed, got: %s", stderr.String())
+	}
+}
