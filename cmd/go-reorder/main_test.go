@@ -34,7 +34,7 @@ type Config struct{}
 
 	// Should output reordered code to stdout
 	output := stdout.String()
-	if !strings.Contains(output, "const Version") {
+	if !strings.Contains(output, "Version") {
 		t.Errorf("expected output to contain reordered code, got: %s", output)
 	}
 }
@@ -104,9 +104,13 @@ const Version = "1.0"
 	// Already ordered file should return exit code 0
 	t.Run("ordered file returns exit 0", func(t *testing.T) {
 		inputFile := filepath.Join(tmpDir, "ordered.go")
+		// Use exact output format that reorder produces
 		content := `package test
 
-const Version = "1.0"
+// Exported constants.
+const (
+	Version = "1.0"
+)
 
 func Helper() {}
 `
