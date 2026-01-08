@@ -17,7 +17,9 @@
       "Bash(go mod tidy:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(/tmp/go-reorder:*)",
+      "Bash(echo:*)"
     ]
   }
 }

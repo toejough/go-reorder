@@ -19,12 +19,37 @@ type CLI struct {
 	Check  bool   `targ:"flag,short=c,desc=Check if files are properly ordered (exit 1 if not)"`
 	Diff   bool   `targ:"flag,short=d,desc=Display diff instead of reordered source"`
 	Config string `targ:"flag,name=config,desc=Path to config file"`
+	Mode   string `targ:"flag,name=mode,desc=Behavior mode (strict|warn|append|drop)"`
 	Path   string `targ:"positional,placeholder=PATH,desc=File or directory to process"`
 }
 
 // Reorder Go source files.
 // Reorders declarations in Go files according to a configurable order.
 func (c *CLI) Run() error {
+	var args []string
+	if c.Write {
+		args = append(args, "--write")
+	}
+	if c.Check {
+		args = append(args, "--check")
+	}
+	if c.Diff {
+		args = append(args, "--diff")
+	}
+	if c.Config != "" {
+		args = append(args, "--config", c.Config)
+	}
+	if c.Mode != "" {
+		args = append(args, "--mode", c.Mode)
+	}
+	if c.Path != "" {
+		args = append(args, c.Path)
+	}
+
+	exitCode := runCLI(args, os.Stdout, os.Stderr)
+	if exitCode != 0 {
+		os.Exit(exitCode)
+	}
 	return nil
 }
 
