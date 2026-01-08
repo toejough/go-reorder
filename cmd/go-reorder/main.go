@@ -28,30 +28,21 @@ type CLI struct {
 // Reorder Go source files.
 // Reorders declarations in Go files according to a configurable order.
 func (c *CLI) Run() error {
-	var args []string
-	if c.Write {
-		args = append(args, "--write")
-	}
-	if c.Check {
-		args = append(args, "--check")
-	}
-	if c.Diff {
-		args = append(args, "--diff")
-	}
-	if c.Config != "" {
-		args = append(args, "--config", c.Config)
-	}
-	if c.Mode != "" {
-		args = append(args, "--mode", c.Mode)
-	}
-	for _, pattern := range c.Exclude {
-		args = append(args, "--exclude", pattern)
-	}
-	if c.Path != "" {
-		args = append(args, c.Path)
+	opts := cliOptions{
+		write:   c.Write,
+		check:   c.Check,
+		diff:    c.Diff,
+		config:  c.Config,
+		mode:    c.Mode,
+		exclude: c.Exclude,
 	}
 
-	exitCode := runCLIWithStdin(args, os.Stdin, os.Stdout, os.Stderr)
+	var files []string
+	if c.Path != "" {
+		files = []string{c.Path}
+	}
+
+	exitCode := run(opts, files, os.Stdin, os.Stdout, os.Stderr)
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
@@ -62,19 +53,23 @@ func main() {
 	targ.Run(CLI{})
 }
 
-// runCLI is the testable entry point.
+// runCLI is the testable entry point (parses args).
 func runCLI(args []string, stdout, stderr io.Writer) int {
 	return runCLIWithStdin(args, nil, stdout, stderr)
 }
 
-// runCLIWithStdin is the testable entry point with stdin support.
+// runCLIWithStdin is the testable entry point with stdin support (parses args).
 func runCLIWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	opts, files, err := parseArgs(args)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 		return 1
 	}
+	return run(opts, files, stdin, stdout, stderr)
+}
 
+// run is the core logic, taking already-parsed options.
+func run(opts cliOptions, files []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(files) == 0 {
 		_, _ = fmt.Fprintf(stderr, "Error: no files specified\n")
 		return 1
