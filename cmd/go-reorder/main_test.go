@@ -279,15 +279,27 @@ const Version = "1.0"
 func TestCLIModeFlag(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create config that excludes some sections
-	configFile := filepath.Join(tmpDir, "reorder.toml")
-	configContent := `[sections]
+	// Create config that excludes some sections (no uncategorized for drop test)
+	dropConfigFile := filepath.Join(tmpDir, "drop.toml")
+	dropConfigContent := `[sections]
 order = ["imports", "main"]
 
 [behavior]
 mode = "strict"
 `
-	if err := os.WriteFile(configFile, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(dropConfigFile, []byte(dropConfigContent), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	// Create config with uncategorized for append test
+	appendConfigFile := filepath.Join(tmpDir, "append.toml")
+	appendConfigContent := `[sections]
+order = ["imports", "main", "uncategorized"]
+
+[behavior]
+mode = "strict"
+`
+	if err := os.WriteFile(appendConfigFile, []byte(appendConfigContent), 0644); err != nil {
 		t.Fatalf("failed to write config file: %v", err)
 	}
 
@@ -305,7 +317,7 @@ const Version = "1.0"
 
 	t.Run("mode=drop discards unmatched", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
-		exitCode := runCLI([]string{"--config", configFile, "--mode", "drop", inputFile}, &stdout, &stderr)
+		exitCode := runCLI([]string{"--config", dropConfigFile, "--mode", "drop", inputFile}, &stdout, &stderr)
 
 		if exitCode != 0 {
 			t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
@@ -320,7 +332,7 @@ const Version = "1.0"
 
 	t.Run("mode=append appends unmatched silently", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
-		exitCode := runCLI([]string{"--config", configFile, "--mode", "append", inputFile}, &stdout, &stderr)
+		exitCode := runCLI([]string{"--config", appendConfigFile, "--mode", "append", inputFile}, &stdout, &stderr)
 
 		if exitCode != 0 {
 			t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())

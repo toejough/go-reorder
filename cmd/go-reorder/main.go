@@ -48,6 +48,11 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	// Load config
 	var cfg *reorder.Config
 	if opts.config != "" {
+		// Check if explicit config file exists
+		if _, err := os.Stat(opts.config); os.IsNotExist(err) {
+			_, _ = fmt.Fprintf(stderr, "Error: config file not found: %s\n", opts.config)
+			return 1
+		}
 		cfg, err = reorder.LoadConfig(opts.config)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "Error loading config: %v\n", err)
@@ -55,6 +60,11 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		}
 	} else {
 		cfg = reorder.DefaultConfig()
+	}
+
+	// Override mode if specified via flag
+	if opts.mode != "" {
+		cfg.Behavior.Mode = opts.mode
 	}
 
 	// Discover all Go files
@@ -95,6 +105,7 @@ type cliOptions struct {
 	check  bool
 	diff   bool
 	config string
+	mode   string
 }
 
 func parseArgs(args []string) (cliOptions, []string, error) {
@@ -119,6 +130,14 @@ func parseArgs(args []string) (cliOptions, []string, error) {
 			opts.config = args[i]
 		case strings.HasPrefix(arg, "--config="):
 			opts.config = strings.TrimPrefix(arg, "--config=")
+		case arg == "--mode":
+			if i+1 >= len(args) {
+				return opts, nil, fmt.Errorf("--mode requires a value")
+			}
+			i++
+			opts.mode = args[i]
+		case strings.HasPrefix(arg, "--mode="):
+			opts.mode = strings.TrimPrefix(arg, "--mode=")
 		case strings.HasPrefix(arg, "-") && arg != "-":
 			return opts, nil, fmt.Errorf("unknown flag: %s", arg)
 		default:
@@ -208,6 +227,7 @@ func processFile(path string, cfg *reorder.Config, opts cliOptions, stdout, stde
 	}
 
 	if opts.write {
+		_, _ = fmt.Fprintf(stderr, "%s\n", path)
 		if changed {
 			if err := os.WriteFile(path, []byte(result), 0644); err != nil {
 				return false, err
