@@ -51,7 +51,7 @@ func (c *CLI) Run() error {
 		args = append(args, c.Path)
 	}
 
-	exitCode := runCLI(args, os.Stdout, os.Stderr)
+	exitCode := runCLIWithStdin(args, os.Stdin, os.Stdout, os.Stderr)
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
@@ -64,6 +64,11 @@ func main() {
 
 // runCLI is the testable entry point.
 func runCLI(args []string, stdout, stderr io.Writer) int {
+	return runCLIWithStdin(args, nil, stdout, stderr)
+}
+
+// runCLIWithStdin is the testable entry point with stdin support.
+func runCLIWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	opts, files, err := parseArgs(args)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
@@ -73,6 +78,11 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	if len(files) == 0 {
 		_, _ = fmt.Fprintf(stderr, "Error: no files specified\n")
 		return 1
+	}
+
+	// Handle stdin mode
+	if len(files) == 1 && files[0] == "-" {
+		return processStdin(stdin, opts, stdout, stderr)
 	}
 
 	// Discover all Go files first (needed for config discovery)
@@ -263,6 +273,48 @@ func isExcluded(path string, patterns []string) bool {
 		}
 	}
 	return false
+}
+
+// processStdin handles reading from stdin and writing to stdout.
+func processStdin(stdin io.Reader, opts cliOptions, stdout, stderr io.Writer) int {
+	// Read all from stdin
+	content, err := io.ReadAll(stdin)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error reading stdin: %v\n", err)
+		return 1
+	}
+
+	// Load config
+	var cfg *reorder.Config
+	if opts.config != "" {
+		if _, err := os.Stat(opts.config); os.IsNotExist(err) {
+			_, _ = fmt.Fprintf(stderr, "Error: config file not found: %s\n", opts.config)
+			return 1
+		}
+		cfg, err = reorder.LoadConfig(opts.config)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "Error loading config: %v\n", err)
+			return 1
+		}
+	} else {
+		cfg = reorder.DefaultConfig()
+	}
+
+	// Override mode if specified via flag
+	if opts.mode != "" {
+		cfg.Behavior.Mode = opts.mode
+	}
+
+	// Reorder
+	result, err := reorder.SourceWithConfig(string(content), cfg)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+
+	// Output to stdout
+	_, _ = fmt.Fprint(stdout, result)
+	return 0
 }
 
 func processFile(path string, cfg *reorder.Config, opts cliOptions, stdout, stderr io.Writer) (bool, error) {
