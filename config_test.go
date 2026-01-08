@@ -161,3 +161,136 @@ mode = "bogus_mode"
 		}
 	})
 }
+
+func TestFindConfig(t *testing.T) {
+	t.Run("finds config in current directory", func(t *testing.T) {
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, ".go-reorder.toml")
+		if err := os.WriteFile(configPath, []byte("[behavior]\nmode = \"warn\"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		found, err := FindConfig(dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if found != configPath {
+			t.Errorf("expected %q, got %q", configPath, found)
+		}
+	})
+
+	t.Run("finds config in parent directory", func(t *testing.T) {
+		dir := t.TempDir()
+		subDir := filepath.Join(dir, "sub")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		configPath := filepath.Join(dir, ".go-reorder.toml")
+		if err := os.WriteFile(configPath, []byte("[behavior]\nmode = \"warn\"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		found, err := FindConfig(subDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if found != configPath {
+			t.Errorf("expected %q, got %q", configPath, found)
+		}
+	})
+
+	t.Run("stops at .git boundary", func(t *testing.T) {
+		dir := t.TempDir()
+		subDir := filepath.Join(dir, "repo", "sub")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		// Create .git in repo/
+		gitDir := filepath.Join(dir, "repo", ".git")
+		if err := os.MkdirAll(gitDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		// Put config above .git (should not be found)
+		configPath := filepath.Join(dir, ".go-reorder.toml")
+		if err := os.WriteFile(configPath, []byte("[behavior]\nmode = \"warn\"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		found, err := FindConfig(subDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if found != "" {
+			t.Errorf("expected empty (stopped at .git), got %q", found)
+		}
+	})
+
+	t.Run("stops at go.mod boundary", func(t *testing.T) {
+		dir := t.TempDir()
+		subDir := filepath.Join(dir, "module", "sub")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		// Create go.mod in module/
+		goModPath := filepath.Join(dir, "module", "go.mod")
+		if err := os.WriteFile(goModPath, []byte("module test\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		// Put config above go.mod (should not be found)
+		configPath := filepath.Join(dir, ".go-reorder.toml")
+		if err := os.WriteFile(configPath, []byte("[behavior]\nmode = \"warn\"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		found, err := FindConfig(subDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if found != "" {
+			t.Errorf("expected empty (stopped at go.mod), got %q", found)
+		}
+	})
+
+	t.Run("returns empty when no config found", func(t *testing.T) {
+		dir := t.TempDir()
+		// Create .git to establish boundary
+		gitDir := filepath.Join(dir, ".git")
+		if err := os.MkdirAll(gitDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		found, err := FindConfig(dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if found != "" {
+			t.Errorf("expected empty, got %q", found)
+		}
+	})
+
+	t.Run("finds config at boundary directory", func(t *testing.T) {
+		dir := t.TempDir()
+		subDir := filepath.Join(dir, "repo", "sub")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		// Create .git in repo/
+		gitDir := filepath.Join(dir, "repo", ".git")
+		if err := os.MkdirAll(gitDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		// Put config at the .git level (should be found)
+		configPath := filepath.Join(dir, "repo", ".go-reorder.toml")
+		if err := os.WriteFile(configPath, []byte("[behavior]\nmode = \"warn\"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		found, err := FindConfig(subDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if found != configPath {
+			t.Errorf("expected %q, got %q", configPath, found)
+		}
+	})
+}
