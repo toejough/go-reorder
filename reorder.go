@@ -168,7 +168,7 @@ func reassembleDeclarationsWithConfig(cat *categorizedDecls, cfg *Config) []dst.
 	for _, section := range cfg.Sections.Order {
 		emitter := getEmitter(section)
 		if emitter != nil {
-			decls = append(decls, emitter(cat)...)
+			decls = append(decls, emitter(cat, cfg)...)
 		}
 	}
 
