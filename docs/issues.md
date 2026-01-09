@@ -92,31 +92,7 @@ Standard issue structure organized by category:
 
 Issues to choose from for future work.
 
-### 7. Add --verbose flag to CLI
-
-#### Universal
-
-**Status**
-backlog
-
-**Description**
-No way to see what config is being applied or get detailed output about processing.
-
-#### Planning
-
-**Rationale**
-Debugging config issues is difficult without visibility into what config was loaded and applied.
-
-**Acceptance**
-- Add `--verbose` / `-v` flag
-- When enabled, print: config file path (or "using defaults"), effective config values, files being processed
-- Output goes to stderr to not interfere with stdout
-
-**Effort**
-Small
-
-**Priority**
-Low
+_No backlog issues_
 
 ---
 
@@ -368,6 +344,38 @@ Added benchmarks for:
 **Files Modified**
 - tests/benchmark_test.go: New file with Source/SourceWithConfig/AnalyzeSectionOrder benchmarks
 - internal/categorize/categorize_test.go: Added CategorizeDeclarations benchmark
+
+---
+
+### 7. Add --verbose flag to CLI
+
+#### Universal
+
+**Status**
+done
+
+**Description**
+No way to see what config is being applied or get detailed output about processing.
+
+#### Work Tracking
+
+**Completed**
+2026-01-08
+
+**Commit**
+41497ba
+
+#### Documentation
+
+**Solution**
+Added `-v`/`--verbose` flag that outputs to stderr:
+- Config file path (or "using defaults")
+- Effective mode
+- Number of files to process
+
+**Files Modified**
+- cmd/go-reorder/cli.go: Added Verbose field and passed to options
+- cmd/go-reorder/process.go: Added verbose output in run()
 
 ---
 
