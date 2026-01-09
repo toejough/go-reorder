@@ -92,33 +92,6 @@ Standard issue structure organized by category:
 
 Issues to choose from for future work.
 
-### 5. Include source position in parse error messages
-
-#### Universal
-
-**Status**
-backlog
-
-**Description**
-Parse errors from `Source()` and `SourceWithConfig()` just say "failed to parse source" without line/column information from the underlying parser.
-
-#### Planning
-
-**Rationale**
-Users need to know where syntax errors are to fix them. The dst parser provides position info that we're discarding.
-
-**Acceptance**
-- Parse errors should include line number at minimum
-- Error message format: "failed to parse source at line X: <parser error>"
-
-**Effort**
-Small
-
-**Priority**
-Medium
-
----
-
 ### 6. Add benchmarks for performance baseline
 
 #### Universal
@@ -362,6 +335,34 @@ Added `TestConstructorMatching_LongestMatchWins` test that verifies:
 
 **Files Modified**
 - internal/categorize/categorize_test.go: Added dedicated constructor matching test
+
+---
+
+### 5. Include source position in parse error messages
+
+#### Universal
+
+**Status**
+done
+
+**Description**
+Parse errors from `Source()` and `SourceWithConfig()` need to include line/column information.
+
+#### Work Tracking
+
+**Completed**
+2026-01-08
+
+**Commit**
+07a2c87
+
+#### Documentation
+
+**Solution**
+Investigated and found that parse errors already include line:column position from the Go parser. Error format is "failed to parse source: 3:6: expected 'IDENT', found 123". Added test to document this behavior.
+
+**Files Modified**
+- tests/reorder_test.go: Added TestSource_ParseErrorIncludesPosition
 
 ---
 

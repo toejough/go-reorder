@@ -569,3 +569,70 @@ func NewFooBarBaz() *FooBar { return nil }
 		t.Errorf("expected 0 standalone funcs, got %d", len(cat.ExportedFuncs))
 	}
 }
+
+// BenchmarkCategorizeDeclarations benchmarks the categorization of declarations.
+func BenchmarkCategorizeDeclarations(b *testing.B) {
+	src := `package benchmark
+
+import "fmt"
+
+const (
+	ExportedConst1 = 1
+	ExportedConst2 = 2
+)
+
+const (
+	unexportedConst1 = 1
+	unexportedConst2 = 2
+)
+
+var (
+	ExportedVar1 = "hello"
+	ExportedVar2 = "world"
+)
+
+var (
+	unexportedVar1 = 1
+	unexportedVar2 = 2
+)
+
+type ExportedType struct{ value int }
+
+func NewExportedType() *ExportedType { return &ExportedType{} }
+
+func (e *ExportedType) Method1() { fmt.Println(e.value) }
+func (e *ExportedType) Method2() { fmt.Println(e.value) }
+func (e *ExportedType) method1() { fmt.Println(e.value) }
+func (e *ExportedType) method2() { fmt.Println(e.value) }
+
+type unexportedType struct{ value int }
+
+func newUnexportedType() *unexportedType { return &unexportedType{} }
+
+func (u *unexportedType) Method1() { fmt.Println(u.value) }
+func (u *unexportedType) method1() { fmt.Println(u.value) }
+
+type Status int
+
+const (
+	StatusPending Status = iota
+	StatusActive
+	StatusClosed
+)
+
+func ExportedFunc1() {}
+func ExportedFunc2() {}
+func unexportedFunc1() {}
+func unexportedFunc2() {}
+`
+	dec := decorator.NewDecorator(token.NewFileSet())
+	file, err := dec.Parse(src)
+	if err != nil {
+		b.Fatalf("failed to parse source: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		CategorizeDeclarations(file)
+	}
+}
