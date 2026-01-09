@@ -7,11 +7,11 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"unicode"
 
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
-	"github.com/dave/dst/dstutil"
+
+	internalast "github.com/toejough/go-reorder/internal/ast"
 )
 
 // Section represents a declaration section in a Go file.
@@ -229,10 +229,10 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 			case token.IMPORT:
 				cat.imports = append(cat.imports, genDecl)
 			case token.CONST:
-				if isIotaBlock(genDecl) { //nolint:nestif // Categorization logic requires nested conditions
+				if internalast.IsIotaBlock(genDecl) { //nolint:nestif // Categorization logic requires nested conditions
 					// Extract type from first spec
-					typeName := extractEnumType(genDecl)
-					exported := isExported(typeName)
+					typeName := internalast.ExtractEnumType(genDecl)
+					exported := internalast.IsExported(typeName)
 
 					iotaBlocks[typeName] = genDecl
 					if exported {
@@ -253,7 +253,7 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 					for _, spec := range genDecl.Specs {
 						if vspec, ok := spec.(*dst.ValueSpec); ok {
 							if len(vspec.Names) > 0 {
-								exported := isExported(vspec.Names[0].Name)
+								exported := internalast.IsExported(vspec.Names[0].Name)
 								if exported {
 									cat.exportedConsts = append(cat.exportedConsts, vspec)
 								} else {
@@ -268,7 +268,7 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 				for _, spec := range genDecl.Specs {
 					if vspec, ok := spec.(*dst.ValueSpec); ok {
 						if len(vspec.Names) > 0 {
-							exported := isExported(vspec.Names[0].Name)
+							exported := internalast.IsExported(vspec.Names[0].Name)
 							if exported {
 								cat.exportedVars = append(cat.exportedVars, vspec)
 							} else {
@@ -282,7 +282,7 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 				for _, spec := range genDecl.Specs {
 					if tspec, ok := spec.(*dst.TypeSpec); ok { //nolint:nestif // Type extraction requires nested type assertions
 						typeName := tspec.Name.Name
-						exported := isExported(typeName)
+						exported := internalast.IsExported(typeName)
 
 						// Create or get type group
 						if typeGroups[typeName] == nil {
@@ -314,14 +314,14 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 				cat.init = append(cat.init, genDecl)
 			case genDecl.Recv != nil:
 				// Method - associate with type
-				typeName := extractReceiverTypeName(genDecl.Recv)
+				typeName := internalast.ExtractReceiverTypeName(genDecl.Recv)
 				if typeGroups[typeName] == nil {
 					typeGroups[typeName] = &typeGroup{
 						typeName: typeName,
 					}
 				}
 
-				methodExported := isExported(genDecl.Name.Name)
+				methodExported := internalast.IsExported(genDecl.Name.Name)
 				if methodExported {
 					typeGroups[typeName].exportedMethods = append(typeGroups[typeName].exportedMethods, genDecl)
 				} else {
@@ -330,7 +330,7 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 			default:
 				// Standalone function or constructor
 				funcName := genDecl.Name.Name
-				exported := isExported(funcName)
+				exported := internalast.IsExported(funcName)
 
 				// Check if it's a constructor (NewTypeName pattern)
 				if strings.HasPrefix(funcName, "New") { //nolint:nestif // Constructor matching requires nested logic
@@ -417,7 +417,7 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 	// Third pass: add method-only typeGroups (no type declaration)
 	for _, tg := range typeGroups {
 		if tg.typeDecl == nil && (len(tg.exportedMethods) > 0 || len(tg.unexportedMethods) > 0) {
-			if isExported(tg.typeName) {
+			if internalast.IsExported(tg.typeName) {
 				cat.exportedTypes = append(cat.exportedTypes, tg)
 			} else {
 				cat.unexportedTypes = append(cat.unexportedTypes, tg)
@@ -551,64 +551,6 @@ func collectUncategorized(cat *categorizedDecls, includedSections map[string]boo
 	}
 }
 
-// containsIota checks if an expression contains iota.
-func containsIota(expr dst.Expr) bool {
-	found := false
-
-	dstutil.Apply(expr, func(c *dstutil.Cursor) bool {
-		if ident, ok := c.Node().(*dst.Ident); ok {
-			if ident.Name == "iota" {
-				found = true
-				return false
-			}
-		}
-
-		return true
-	}, nil)
-
-	return found
-}
-
-// extractEnumType extracts the type name from the first spec in an iota block.
-func extractEnumType(decl *dst.GenDecl) string {
-	if len(decl.Specs) == 0 {
-		return ""
-	}
-
-	vspec, ok := decl.Specs[0].(*dst.ValueSpec)
-	if !ok || vspec.Type == nil {
-		return ""
-	}
-
-	return extractTypeName(vspec.Type)
-}
-
-// extractReceiverTypeName extracts the type name from a method receiver.
-func extractReceiverTypeName(recv *dst.FieldList) string {
-	if recv == nil || len(recv.List) == 0 {
-		return ""
-	}
-
-	return extractTypeName(recv.List[0].Type)
-}
-
-// extractTypeName extracts the type name from a type expression.
-func extractTypeName(expr dst.Expr) string {
-	switch typeExpr := expr.(type) {
-	case *dst.Ident:
-		return typeExpr.Name
-	case *dst.SelectorExpr:
-		return typeExpr.Sel.Name
-	case *dst.StarExpr:
-		return extractTypeName(typeExpr.X)
-	case *dst.IndexExpr:
-		return extractTypeName(typeExpr.X)
-	case *dst.IndexListExpr:
-		return extractTypeName(typeExpr.X)
-	}
-
-	return ""
-}
 
 // identifySection determines which section a declaration belongs to.
 //
@@ -621,9 +563,9 @@ func identifySection(decl dst.Decl) string {
 		}
 
 		if d.Tok == token.CONST {
-			if isIotaBlock(d) {
-				typeName := extractEnumType(d)
-				if isExported(typeName) {
+			if internalast.IsIotaBlock(d) {
+				typeName := internalast.ExtractEnumType(d)
+				if internalast.IsExported(typeName) {
 					return "Exported Enums"
 				}
 
@@ -633,7 +575,7 @@ func identifySection(decl dst.Decl) string {
 			if len(d.Specs) > 0 {
 				if vspec, ok := d.Specs[0].(*dst.ValueSpec); ok {
 					if len(vspec.Names) > 0 {
-						if isExported(vspec.Names[0].Name) {
+						if internalast.IsExported(vspec.Names[0].Name) {
 							return "Exported Constants"
 						}
 
@@ -647,7 +589,7 @@ func identifySection(decl dst.Decl) string {
 			if len(d.Specs) > 0 {
 				if vspec, ok := d.Specs[0].(*dst.ValueSpec); ok {
 					if len(vspec.Names) > 0 {
-						if isExported(vspec.Names[0].Name) {
+						if internalast.IsExported(vspec.Names[0].Name) {
 							return "Exported Variables"
 						}
 
@@ -660,7 +602,7 @@ func identifySection(decl dst.Decl) string {
 		if d.Tok == token.TYPE {
 			if len(d.Specs) > 0 {
 				if tspec, ok := d.Specs[0].(*dst.TypeSpec); ok {
-					if isExported(tspec.Name.Name) {
+					if internalast.IsExported(tspec.Name.Name) {
 						return "Exported Types"
 					}
 
@@ -674,15 +616,15 @@ func identifySection(decl dst.Decl) string {
 		}
 		// Skip methods (they're part of type groups)
 		if d.Recv != nil {
-			typeName := extractReceiverTypeName(d.Recv)
-			if isExported(typeName) {
+			typeName := internalast.ExtractReceiverTypeName(d.Recv)
+			if internalast.IsExported(typeName) {
 				return "Exported Types"
 			}
 
 			return "unexported types"
 		}
 
-		if isExported(d.Name.Name) {
+		if internalast.IsExported(d.Name.Name) {
 			return "Exported Functions"
 		}
 
@@ -690,37 +632,6 @@ func identifySection(decl dst.Decl) string {
 	}
 
 	return ""
-}
-
-// isExported checks if a name is exported (starts with uppercase).
-func isExported(name string) bool {
-	if name == "" {
-		return false
-	}
-
-	r := []rune(name)[0]
-
-	return unicode.IsUpper(r)
-}
-
-// isIotaBlock checks if a const block uses iota.
-func isIotaBlock(decl *dst.GenDecl) bool {
-	if decl.Tok != token.CONST {
-		return false
-	}
-
-	for _, spec := range decl.Specs {
-		vspec, ok := spec.(*dst.ValueSpec)
-		if !ok {
-			continue
-		}
-
-		if slices.ContainsFunc(vspec.Values, containsIota) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // mergeConstSpecs creates a single const block from multiple specs.
