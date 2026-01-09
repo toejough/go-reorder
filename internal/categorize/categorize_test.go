@@ -129,6 +129,33 @@ func NewConfigWithTimeout() *Config { return nil }
 			expectedExpTypes: 1,
 			expectedExpFuncs: 0, // Constructors grouped with type
 		},
+		{
+			name: "untyped iota block treated as constants not enum",
+			src: `package test
+
+const (
+	a = iota
+	b
+	c
+)
+`,
+			expectedUnexpConsts: 3, // Should be regular constants, not an enum
+			expectedUnexpEnums:  0, // No enum since no type annotation
+		},
+		{
+			name: "exported untyped iota block treated as constants",
+			src: `package test
+
+const (
+	A = iota
+	B
+	C
+)
+`,
+			expectedExpConsts:  3,
+			expectedUnexpEnums: 0,
+			expectedExpEnums:   0,
+		},
 	}
 
 	for _, tt := range tests {

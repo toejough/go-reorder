@@ -78,9 +78,14 @@ func CategorizeDeclarations(file *dst.File) *CategorizedDecls {
 			case token.IMPORT:
 				cat.Imports = append(cat.Imports, genDecl)
 			case token.CONST:
-				if ast.IsIotaBlock(genDecl) { //nolint:nestif // Categorization logic requires nested conditions
-					// Extract type from first spec
-					typeName := ast.ExtractEnumType(genDecl)
+				// Check if this is a typed iota block (enum pattern)
+				typeName := ""
+				if ast.IsIotaBlock(genDecl) {
+					typeName = ast.ExtractEnumType(genDecl)
+				}
+
+				if typeName != "" { //nolint:nestif // Categorization logic requires nested conditions
+					// Typed iota block = enum
 					exported := ast.IsExported(typeName)
 
 					if exported {
@@ -290,13 +295,16 @@ func IdentifySection(decl dst.Decl) string {
 		}
 
 		if d.Tok == token.CONST {
+			// Only treat as enum if it's a typed iota block
 			if ast.IsIotaBlock(d) {
 				typeName := ast.ExtractEnumType(d)
-				if ast.IsExported(typeName) {
-					return "Exported Enums"
-				}
+				if typeName != "" {
+					if ast.IsExported(typeName) {
+						return "Exported Enums"
+					}
 
-				return "unexported enums"
+					return "unexported enums"
+				}
 			}
 			// Check if it's a merged const block
 			if len(d.Specs) > 0 {

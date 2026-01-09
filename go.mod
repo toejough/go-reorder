@@ -4,14 +4,14 @@ go 1.25.5
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/dave/dst v0.27.3
+	github.com/pmezard/go-difflib v1.0.0
 	github.com/toejough/targ v0.0.0-20260109012736-c078856837f3
 )
 
 require (
-	github.com/bmatcuk/doublestar/v4 v4.9.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
 	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect

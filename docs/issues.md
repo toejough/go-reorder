@@ -92,7 +92,170 @@ Standard issue structure organized by category:
 
 Issues to choose from for future work.
 
-_No backlog issues_
+### 2. Add defensive check in ExtractEnumType() for untyped first const
+
+#### Universal
+
+**Status**
+in progress
+
+**Description**
+`ExtractEnumType()` in `internal/ast/util.go` assumes the first const in an iota block has a type annotation. If the first const is untyped, the function returns an empty string, potentially causing enum detection to fail silently.
+
+#### Planning
+
+**Rationale**
+Defensive coding prevents silent failures. Edge cases in real-world code could trigger this.
+
+**Acceptance**
+- Add explicit handling for untyped first const case
+- Add test case demonstrating the edge case
+- Function should either find the type from a later spec or return empty string explicitly
+
+**Effort**
+Small
+
+**Priority**
+High
+
+---
+
+### 3. Document three-pass categorization algorithm
+
+#### Universal
+
+**Status**
+backlog
+
+**Description**
+`CategorizeDeclarations()` in `internal/categorize/categorize.go` uses a three-pass algorithm but has no comments explaining why each pass exists or what it accomplishes.
+
+#### Planning
+
+**Rationale**
+Core logic should be documented for maintainability. The three passes are: (1) collect type names, (2) categorize declarations, (3) add method-only typeGroups.
+
+**Acceptance**
+- Add block comment before function explaining the algorithm
+- Add inline comments for each pass explaining its purpose
+- Document why order matters
+
+**Effort**
+Small
+
+**Priority**
+Medium
+
+---
+
+### 4. Add test for ambiguous constructor matching
+
+#### Universal
+
+**Status**
+backlog
+
+**Description**
+Constructor matching uses longest-suffix match (`NewFooBar` matches `FooBar` over `Foo`), but this behavior is undocumented and untested for ambiguous cases.
+
+#### Planning
+
+**Rationale**
+Untested behavior could change unexpectedly. Document and test the current behavior to lock it in.
+
+**Acceptance**
+- Add test with types `Foo` and `FooBar` and constructor `NewFooBar()`
+- Add test with constructor `NewFoo()` to verify it matches `Foo` not `FooBar`
+- Document the matching algorithm in code comments
+
+**Effort**
+Small
+
+**Priority**
+Medium
+
+---
+
+### 5. Include source position in parse error messages
+
+#### Universal
+
+**Status**
+backlog
+
+**Description**
+Parse errors from `Source()` and `SourceWithConfig()` just say "failed to parse source" without line/column information from the underlying parser.
+
+#### Planning
+
+**Rationale**
+Users need to know where syntax errors are to fix them. The dst parser provides position info that we're discarding.
+
+**Acceptance**
+- Parse errors should include line number at minimum
+- Error message format: "failed to parse source at line X: <parser error>"
+
+**Effort**
+Small
+
+**Priority**
+Medium
+
+---
+
+### 6. Add benchmarks for performance baseline
+
+#### Universal
+
+**Status**
+backlog
+
+**Description**
+No benchmarks exist. Performance characteristics on large files or directory trees are unknown.
+
+#### Planning
+
+**Rationale**
+Benchmarks establish baseline and catch performance regressions.
+
+**Acceptance**
+- Add benchmark for `Source()` with small (100 line), medium (1k line), large (10k line) files
+- Add benchmark for categorization step
+- Add benchmark for file discovery on directory tree
+
+**Effort**
+Medium
+
+**Priority**
+Low
+
+---
+
+### 7. Add --verbose flag to CLI
+
+#### Universal
+
+**Status**
+backlog
+
+**Description**
+No way to see what config is being applied or get detailed output about processing.
+
+#### Planning
+
+**Rationale**
+Debugging config issues is difficult without visibility into what config was loaded and applied.
+
+**Acceptance**
+- Add `--verbose` / `-v` flag
+- When enabled, print: config file path (or "using defaults"), effective config values, files being processed
+- Output goes to stderr to not interfere with stdout
+
+**Effort**
+Small
+
+**Priority**
+Low
 
 ---
 
