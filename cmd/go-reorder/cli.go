@@ -10,6 +10,7 @@ type CLI struct {
 	Write   bool     `targ:"flag,short=w,desc=Write result to source file instead of stdout"`
 	Check   bool     `targ:"flag,short=c,desc=Check if files are properly ordered (exit 1 if not)"`
 	Diff    bool     `targ:"flag,short=d,desc=Display diff instead of reordered source"`
+	Verbose bool     `targ:"flag,short=v,desc=Show config and processing details"`
 	Config  string   `targ:"flag,name=config,desc=Path to config file"`
 	Mode    string   `targ:"flag,name=mode,desc=Behavior mode (strict|warn|append|drop)"`
 	Exclude []string `targ:"flag,name=exclude,desc=Exclude files matching pattern (can be repeated)"`
@@ -35,6 +36,7 @@ func (c *CLI) Run() error {
 		write:   c.Write,
 		check:   c.Check,
 		diff:    c.Diff,
+		verbose: c.Verbose,
 		config:  c.Config,
 		mode:    c.Mode,
 		exclude: c.Exclude,
@@ -67,6 +69,7 @@ type cliOptions struct {
 	write   bool
 	check   bool
 	diff    bool
+	verbose bool
 	config  string
 	mode    string
 	exclude []string

@@ -133,12 +133,14 @@ func run(opts cliOptions, files []string, stdin io.Reader, stdout, stderr io.Wri
 
 	// Load config
 	var cfg *reorder.Config
+	var configPath string
 	if opts.config != "" {
 		// Check if explicit config file exists
 		if _, err := os.Stat(opts.config); os.IsNotExist(err) {
 			_, _ = fmt.Fprintf(stderr, "Error: config file not found: %s\n", opts.config)
 			return 1
 		}
+		configPath = opts.config
 		cfg, err = reorder.LoadConfig(opts.config)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "Error loading config: %v\n", err)
@@ -147,7 +149,7 @@ func run(opts cliOptions, files []string, stdin io.Reader, stdout, stderr io.Wri
 	} else {
 		// Try to discover config based on first file's directory
 		firstFileDir := filepath.Dir(goFiles[0])
-		configPath, err := reorder.FindConfig(firstFileDir)
+		configPath, err = reorder.FindConfig(firstFileDir)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "Error finding config: %v\n", err)
 			return 1
@@ -166,6 +168,17 @@ func run(opts cliOptions, files []string, stdin io.Reader, stdout, stderr io.Wri
 	// Override mode if specified via flag
 	if opts.mode != "" {
 		cfg.Behavior.Mode = opts.mode
+	}
+
+	// Verbose output
+	if opts.verbose {
+		if configPath != "" {
+			_, _ = fmt.Fprintf(stderr, "config: %s\n", configPath)
+		} else {
+			_, _ = fmt.Fprintf(stderr, "config: using defaults\n")
+		}
+		_, _ = fmt.Fprintf(stderr, "mode: %s\n", cfg.Behavior.Mode)
+		_, _ = fmt.Fprintf(stderr, "files: %d\n", len(goFiles))
 	}
 
 	// Process each file

@@ -92,34 +92,6 @@ Standard issue structure organized by category:
 
 Issues to choose from for future work.
 
-### 6. Add benchmarks for performance baseline
-
-#### Universal
-
-**Status**
-backlog
-
-**Description**
-No benchmarks exist. Performance characteristics on large files or directory trees are unknown.
-
-#### Planning
-
-**Rationale**
-Benchmarks establish baseline and catch performance regressions.
-
-**Acceptance**
-- Add benchmark for `Source()` with small (100 line), medium (1k line), large (10k line) files
-- Add benchmark for categorization step
-- Add benchmark for file discovery on directory tree
-
-**Effort**
-Medium
-
-**Priority**
-Low
-
----
-
 ### 7. Add --verbose flag to CLI
 
 #### Universal
@@ -363,6 +335,39 @@ Investigated and found that parse errors already include line:column position fr
 
 **Files Modified**
 - tests/reorder_test.go: Added TestSource_ParseErrorIncludesPosition
+
+---
+
+### 6. Add benchmarks for performance baseline
+
+#### Universal
+
+**Status**
+done
+
+**Description**
+No benchmarks existed. Performance characteristics on large files were unknown.
+
+#### Work Tracking
+
+**Completed**
+2026-01-08
+
+**Commit**
+9d5c3e2
+
+#### Documentation
+
+**Solution**
+Added benchmarks for:
+- `Source()` with small (~100 line), medium (~1k line), large (~10k line) files
+- `SourceWithConfig()` with small/medium/large files
+- `AnalyzeSectionOrder()`
+- `CategorizeDeclarations()`
+
+**Files Modified**
+- tests/benchmark_test.go: New file with Source/SourceWithConfig/AnalyzeSectionOrder benchmarks
+- internal/categorize/categorize_test.go: Added CategorizeDeclarations benchmark
 
 ---
 
