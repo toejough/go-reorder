@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/dave/dst v0.27.3
-	github.com/toejough/targ v0.0.0-20260106001830-738bd890d353
+	github.com/toejough/targ v0.0.0-20260109012736-c078856837f3
 )
 
 require (

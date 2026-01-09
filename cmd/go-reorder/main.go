@@ -25,9 +25,32 @@ type CLI struct {
 	Path    string   `targ:"positional,placeholder=PATH,desc=File or directory to process"`
 }
 
+// testContext holds test injection - separate from CLI to avoid targ's zero-value check.
+type testContext struct {
+	stdin    io.Reader
+	stdout   io.Writer
+	stderr   io.Writer
+	exitCode int
+}
+
+// testCtx is set during tests to inject IO streams.
+var testCtx *testContext
+
 // Reorder Go source files.
 // Reorders declarations in Go files according to a configurable order.
 func (c *CLI) Run() error {
+	stdin := io.Reader(os.Stdin)
+	stdout := io.Writer(os.Stdout)
+	stderr := io.Writer(os.Stderr)
+
+	if testCtx != nil {
+		if testCtx.stdin != nil {
+			stdin = testCtx.stdin
+		}
+		stdout = testCtx.stdout
+		stderr = testCtx.stderr
+	}
+
 	opts := cliOptions{
 		write:   c.Write,
 		check:   c.Check,
@@ -42,7 +65,13 @@ func (c *CLI) Run() error {
 		files = []string{c.Path}
 	}
 
-	exitCode := run(opts, files, os.Stdin, os.Stdout, os.Stderr)
+	exitCode := run(opts, files, stdin, stdout, stderr)
+
+	if testCtx != nil {
+		testCtx.exitCode = exitCode
+		return nil
+	}
+
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
@@ -53,19 +82,17 @@ func main() {
 	targ.Run(CLI{})
 }
 
-// runCLI is the testable entry point (parses args).
-func runCLI(args []string, stdout, stderr io.Writer) int {
-	return runCLIWithStdin(args, nil, stdout, stderr)
-}
-
-// runCLIWithStdin is the testable entry point with stdin support (parses args).
-func runCLIWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	opts, files, err := parseArgs(args)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		return 1
+// executeCLI is the testable entry point using targ.Execute.
+func executeCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	testCtx = &testContext{
+		stdin:  stdin,
+		stdout: stdout,
+		stderr: stderr,
 	}
-	return run(opts, files, stdin, stdout, stderr)
+	defer func() { testCtx = nil }()
+
+	_, _ = targ.Execute(append([]string{"go-reorder"}, args...), CLI{})
+	return testCtx.exitCode
 }
 
 // run is the core logic, taking already-parsed options.
@@ -159,53 +186,6 @@ type cliOptions struct {
 	exclude []string
 }
 
-func parseArgs(args []string) (cliOptions, []string, error) {
-	var opts cliOptions
-	var files []string
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-
-		switch {
-		case arg == "-w" || arg == "--write":
-			opts.write = true
-		case arg == "-c" || arg == "--check":
-			opts.check = true
-		case arg == "-d" || arg == "--diff":
-			opts.diff = true
-		case arg == "--config":
-			if i+1 >= len(args) {
-				return opts, nil, fmt.Errorf("--config requires a value")
-			}
-			i++
-			opts.config = args[i]
-		case strings.HasPrefix(arg, "--config="):
-			opts.config = strings.TrimPrefix(arg, "--config=")
-		case arg == "--mode":
-			if i+1 >= len(args) {
-				return opts, nil, fmt.Errorf("--mode requires a value")
-			}
-			i++
-			opts.mode = args[i]
-		case strings.HasPrefix(arg, "--mode="):
-			opts.mode = strings.TrimPrefix(arg, "--mode=")
-		case arg == "--exclude":
-			if i+1 >= len(args) {
-				return opts, nil, fmt.Errorf("--exclude requires a value")
-			}
-			i++
-			opts.exclude = append(opts.exclude, args[i])
-		case strings.HasPrefix(arg, "--exclude="):
-			opts.exclude = append(opts.exclude, strings.TrimPrefix(arg, "--exclude="))
-		case strings.HasPrefix(arg, "-") && arg != "-":
-			return opts, nil, fmt.Errorf("unknown flag: %s", arg)
-		default:
-			files = append(files, arg)
-		}
-	}
-
-	return opts, files, nil
-}
 
 func discoverFiles(paths []string, excludePatterns []string) ([]string, error) {
 	var files []string

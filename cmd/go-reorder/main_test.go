@@ -26,7 +26,7 @@ type Config struct{}
 
 	// Run CLI
 	var stdout, stderr bytes.Buffer
-	exitCode := runCLI([]string{inputFile}, &stdout, &stderr)
+	exitCode := executeCLI([]string{inputFile}, nil, &stdout, &stderr)
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d", exitCode)
@@ -57,7 +57,7 @@ type Config struct{}
 
 	// Run CLI with --write
 	var stdout, stderr bytes.Buffer
-	exitCode := runCLI([]string{"--write", inputFile}, &stdout, &stderr)
+	exitCode := executeCLI([]string{"--write", inputFile}, nil, &stdout, &stderr)
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
@@ -94,7 +94,7 @@ const Version = "1.0"
 		}
 
 		var stdout, stderr bytes.Buffer
-		exitCode := runCLI([]string{"--check", inputFile}, &stdout, &stderr)
+		exitCode := executeCLI([]string{"--check", inputFile}, nil, &stdout, &stderr)
 
 		if exitCode != 1 {
 			t.Errorf("expected exit code 1 for unordered file, got %d", exitCode)
@@ -119,7 +119,7 @@ func Helper() {}
 		}
 
 		var stdout, stderr bytes.Buffer
-		exitCode := runCLI([]string{"--check", inputFile}, &stdout, &stderr)
+		exitCode := executeCLI([]string{"--check", inputFile}, nil, &stdout, &stderr)
 
 		if exitCode != 0 {
 			t.Errorf("expected exit code 0 for ordered file, got %d; stderr: %s", exitCode, stderr.String())
@@ -141,7 +141,7 @@ const Version = "1.0"
 	}
 
 	var stdout, stderr bytes.Buffer
-	exitCode := runCLI([]string{"--diff", inputFile}, &stdout, &stderr)
+	exitCode := executeCLI([]string{"--diff", inputFile}, nil, &stdout, &stderr)
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d", exitCode)
@@ -176,7 +176,7 @@ const Version = "1.0"
 
 	// Run CLI with --write on directory
 	var stdout, stderr bytes.Buffer
-	exitCode := runCLI([]string{"--write", tmpDir}, &stdout, &stderr)
+	exitCode := executeCLI([]string{"--write", tmpDir}, nil, &stdout, &stderr)
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
@@ -223,7 +223,7 @@ const Version = "1.0"
 
 	// Run CLI with --write on directory
 	var stdout, stderr bytes.Buffer
-	exitCode := runCLI([]string{"--write", tmpDir}, &stdout, &stderr)
+	exitCode := executeCLI([]string{"--write", tmpDir}, nil, &stdout, &stderr)
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
@@ -269,7 +269,7 @@ const Version = "1.0"
 
 	// Run CLI with --config
 	var stdout, stderr bytes.Buffer
-	exitCode := runCLI([]string{"--config", configFile, inputFile}, &stdout, &stderr)
+	exitCode := executeCLI([]string{"--config", configFile, inputFile}, nil, &stdout, &stderr)
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
@@ -317,7 +317,7 @@ const Version = "1.0"
 
 	t.Run("mode=drop discards unmatched", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
-		exitCode := runCLI([]string{"--config", dropConfigFile, "--mode", "drop", inputFile}, &stdout, &stderr)
+		exitCode := executeCLI([]string{"--config", dropConfigFile, "--mode", "drop", inputFile}, nil, &stdout, &stderr)
 
 		if exitCode != 0 {
 			t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
@@ -332,7 +332,7 @@ const Version = "1.0"
 
 	t.Run("mode=append appends unmatched silently", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
-		exitCode := runCLI([]string{"--config", appendConfigFile, "--mode", "append", inputFile}, &stdout, &stderr)
+		exitCode := executeCLI([]string{"--config", appendConfigFile, "--mode", "append", inputFile}, nil, &stdout, &stderr)
 
 		if exitCode != 0 {
 			t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
@@ -358,7 +358,7 @@ func Helper() {}
 	}
 
 	var stdout, stderr bytes.Buffer
-	exitCode := runCLI([]string{"--config", "/nonexistent/config.toml", inputFile}, &stdout, &stderr)
+	exitCode := executeCLI([]string{"--config", "/nonexistent/config.toml", inputFile}, nil, &stdout, &stderr)
 
 	if exitCode != 1 {
 		t.Errorf("expected exit code 1 for missing config, got %d", exitCode)
@@ -381,7 +381,7 @@ func Helper() {}
 	}
 
 	var stdout, stderr bytes.Buffer
-	exitCode := runCLI([]string{"--write", inputFile}, &stdout, &stderr)
+	exitCode := executeCLI([]string{"--write", inputFile}, nil, &stdout, &stderr)
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
@@ -434,7 +434,7 @@ const Version = "1.0"
 
 	// Run CLI without --config, should discover the config
 	var stdout, stderr bytes.Buffer
-	exitCode := runCLI([]string{inputFile}, &stdout, &stderr)
+	exitCode := executeCLI([]string{inputFile}, nil, &stdout, &stderr)
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
@@ -469,7 +469,7 @@ func Helper() {}
 	}
 
 	var stdout, stderr bytes.Buffer
-	exitCode := runCLI([]string{"--exclude", "vendor/**", "--write", tmpDir}, &stdout, &stderr)
+	exitCode := executeCLI([]string{"--exclude", "vendor/**", "--write", tmpDir}, nil, &stdout, &stderr)
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
@@ -502,7 +502,7 @@ func Helper() {}
 	}
 
 	var stdout, stderr bytes.Buffer
-	exitCode := runCLI([]string{"--exclude", "*_test.go", "--write", tmpDir}, &stdout, &stderr)
+	exitCode := executeCLI([]string{"--exclude", "*_test.go", "--write", tmpDir}, nil, &stdout, &stderr)
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
@@ -528,7 +528,7 @@ const Version = "1.0"
 	stdin := strings.NewReader(content)
 	var stdout, stderr bytes.Buffer
 
-	exitCode := runCLIWithStdin([]string{"-"}, stdin, &stdout, &stderr)
+	exitCode := executeCLI([]string{"-"}, stdin, &stdout, &stderr)
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
@@ -553,7 +553,7 @@ const Version = "1.0"
 	stdin := strings.NewReader(content)
 	var stdout, stderr bytes.Buffer
 
-	exitCode := runCLIWithStdin([]string{"--mode", "drop", "-"}, stdin, &stdout, &stderr)
+	exitCode := executeCLI([]string{"--mode", "drop", "-"}, stdin, &stdout, &stderr)
 
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
