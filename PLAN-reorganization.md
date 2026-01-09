@@ -10,9 +10,9 @@
 | 4. Extract internal/reassemble | Complete | test(reassemble), feat(reassemble) |
 | 5. Clean up root package | Complete | refactor(root) |
 | 6. Split CLI into files | Complete | refactor(cli) |
-| 7. Clean up demos and docs | Not started | |
+| 7. Clean up demos and docs | Complete | chore(cleanup) |
 
-**Current**: Phase 6 complete, ready for review before Phase 7
+**Current**: All phases complete!
 
 ---
 
