@@ -1,13 +1,15 @@
-package reorder
+package reorder_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/toejough/go-reorder"
 )
 
 func TestDefaultConfig(t *testing.T) {
-	cfg := DefaultConfig()
+	cfg := reorder.DefaultConfig()
 
 	if len(cfg.Sections.Order) != 14 {
 		t.Errorf("expected 14 sections, got %d", len(cfg.Sections.Order))
@@ -31,7 +33,7 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestConfigValidation(t *testing.T) {
 	t.Run("valid config passes", func(t *testing.T) {
-		cfg := DefaultConfig()
+		cfg := reorder.DefaultConfig()
 		err := cfg.Validate()
 		if err != nil {
 			t.Errorf("expected no error, got %v", err)
@@ -39,7 +41,7 @@ func TestConfigValidation(t *testing.T) {
 	})
 
 	t.Run("unknown section errors", func(t *testing.T) {
-		cfg := DefaultConfig()
+		cfg := reorder.DefaultConfig()
 		cfg.Sections.Order = []string{"bogus"}
 		err := cfg.Validate()
 		if err == nil {
@@ -48,7 +50,7 @@ func TestConfigValidation(t *testing.T) {
 	})
 
 	t.Run("duplicate sections error", func(t *testing.T) {
-		cfg := DefaultConfig()
+		cfg := reorder.DefaultConfig()
 		cfg.Sections.Order = []string{"imports", "imports"}
 		err := cfg.Validate()
 		if err == nil {
@@ -57,7 +59,7 @@ func TestConfigValidation(t *testing.T) {
 	})
 
 	t.Run("invalid mode errors", func(t *testing.T) {
-		cfg := DefaultConfig()
+		cfg := reorder.DefaultConfig()
 		cfg.Behavior.Mode = "invalid"
 		err := cfg.Validate()
 		if err == nil {
@@ -81,7 +83,7 @@ order = ["imports", "main", "uncategorized"]
 			t.Fatal(err)
 		}
 
-		cfg, err := LoadConfig(path)
+		cfg, err := reorder.LoadConfig(path)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -94,7 +96,7 @@ order = ["imports", "main", "uncategorized"]
 	})
 
 	t.Run("missing file returns defaults", func(t *testing.T) {
-		cfg, err := LoadConfig("/nonexistent/path/config.toml")
+		cfg, err := reorder.LoadConfig("/nonexistent/path/config.toml")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -117,7 +119,7 @@ mode = "append"
 			t.Fatal(err)
 		}
 
-		cfg, err := LoadConfig(path)
+		cfg, err := reorder.LoadConfig(path)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -138,7 +140,7 @@ mode = "append"
 			t.Fatal(err)
 		}
 
-		_, err := LoadConfig(path)
+		_, err := reorder.LoadConfig(path)
 		if err == nil {
 			t.Error("expected error for invalid TOML")
 		}
@@ -155,7 +157,7 @@ mode = "bogus_mode"
 			t.Fatal(err)
 		}
 
-		_, err := LoadConfig(path)
+		_, err := reorder.LoadConfig(path)
 		if err == nil {
 			t.Error("expected error for invalid mode value")
 		}
@@ -170,7 +172,7 @@ func TestFindConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		found, err := FindConfig(dir)
+		found, err := reorder.FindConfig(dir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -190,7 +192,7 @@ func TestFindConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		found, err := FindConfig(subDir)
+		found, err := reorder.FindConfig(subDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -216,7 +218,7 @@ func TestFindConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		found, err := FindConfig(subDir)
+		found, err := reorder.FindConfig(subDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -242,7 +244,7 @@ func TestFindConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		found, err := FindConfig(subDir)
+		found, err := reorder.FindConfig(subDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -259,7 +261,7 @@ func TestFindConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		found, err := FindConfig(dir)
+		found, err := reorder.FindConfig(dir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -285,7 +287,7 @@ func TestFindConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		found, err := FindConfig(subDir)
+		found, err := reorder.FindConfig(subDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
