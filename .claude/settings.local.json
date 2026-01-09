@@ -23,7 +23,8 @@
       "Bash(go vet:*)",
       "Bash(wc:*)",
       "Bash(terminal-notifier:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(ls:*)"
     ]
   }
 }

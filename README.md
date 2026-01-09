@@ -1,6 +1,6 @@
 # go-reorder
 
-![go-reorder](reorder.png)
+![go-reorder](assets/reorder.png)
 
 A Go code reordering tool that organizes declarations according to configurable conventions.
 
