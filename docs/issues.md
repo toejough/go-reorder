@@ -92,42 +92,12 @@ Standard issue structure organized by category:
 
 Issues to choose from for future work.
 
----
-
-### 3. Document three-pass categorization algorithm
-
-#### Universal
-
-**Status**
-in progress
-
-**Description**
-`CategorizeDeclarations()` in `internal/categorize/categorize.go` uses a three-pass algorithm but has no comments explaining why each pass exists or what it accomplishes.
-
-#### Planning
-
-**Rationale**
-Core logic should be documented for maintainability. The three passes are: (1) collect type names, (2) categorize declarations, (3) add method-only typeGroups.
-
-**Acceptance**
-- Add block comment before function explaining the algorithm
-- Add inline comments for each pass explaining its purpose
-- Document why order matters
-
-**Effort**
-Small
-
-**Priority**
-Medium
-
----
-
 ### 4. Add test for ambiguous constructor matching
 
 #### Universal
 
 **Status**
-backlog
+in progress
 
 **Description**
 Constructor matching uses longest-suffix match (`NewFooBar` matches `FooBar` over `Foo`), but this behavior is undocumented and untested for ambiguous cases.
@@ -369,6 +339,26 @@ Modified `CategorizeDeclarations()` and `IdentifySection()` in `internal/categor
 **Files Modified**
 - internal/categorize/categorize.go: Check for empty typeName before treating as enum
 - internal/categorize/categorize_test.go: Added test cases for untyped iota blocks
+
+---
+
+### 3. Document four-pass categorization algorithm
+
+#### Universal
+
+**Status**
+done
+
+**Description**
+Added comprehensive documentation to `CategorizeDeclarations()` explaining the four-pass algorithm and constructor matching.
+
+#### Work Tracking
+
+**Completed**
+2026-01-08
+
+**Commit**
+696cb5c
 
 ---
 

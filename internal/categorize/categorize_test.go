@@ -156,6 +156,20 @@ const (
 			expectedUnexpEnums: 0,
 			expectedExpEnums:   0,
 		},
+		{
+			name: "constructor matching with ambiguous types - longest match wins",
+			src: `package test
+
+type Foo struct{}
+type FooBar struct{}
+
+func NewFoo() *Foo { return nil }
+func NewFooBar() *FooBar { return nil }
+func NewFooBarWithOptions() *FooBar { return nil }
+`,
+			expectedExpTypes: 2, // Both Foo and FooBar with their constructors
+			expectedExpFuncs: 0, // All are constructors, none standalone
+		},
 	}
 
 	for _, tt := range tests {
@@ -486,5 +500,72 @@ func (s Status) isValid() bool { return true }
 
 	if len(eg.UnexportedMethods) != 1 {
 		t.Errorf("unexported methods = %d, want 1", len(eg.UnexportedMethods))
+	}
+}
+
+func TestConstructorMatching_LongestMatchWins(t *testing.T) {
+	// Test that constructor matching uses longest-suffix match
+	// NewFooBar should match FooBar, not Foo
+	src := `package test
+
+type Foo struct{}
+type FooBar struct{}
+
+func NewFoo() *Foo { return nil }
+func NewFooBar() *FooBar { return nil }
+func NewFooBarBaz() *FooBar { return nil }
+`
+
+	file := parseSource(t, src)
+	cat := CategorizeDeclarations(file)
+
+	if len(cat.ExportedTypes) != 2 {
+		t.Fatalf("expected 2 type groups, got %d", len(cat.ExportedTypes))
+	}
+
+	// Find the type groups
+	var fooGroup, fooBarGroup *TypeGroup
+	for _, tg := range cat.ExportedTypes {
+		switch tg.TypeName {
+		case "Foo":
+			fooGroup = tg
+		case "FooBar":
+			fooBarGroup = tg
+		}
+	}
+
+	if fooGroup == nil {
+		t.Fatal("Foo type group not found")
+	}
+	if fooBarGroup == nil {
+		t.Fatal("FooBar type group not found")
+	}
+
+	// Foo should have exactly 1 constructor: NewFoo
+	if len(fooGroup.Constructors) != 1 {
+		t.Errorf("Foo constructors = %d, want 1", len(fooGroup.Constructors))
+	} else if fooGroup.Constructors[0].Name.Name != "NewFoo" {
+		t.Errorf("Foo constructor = %s, want NewFoo", fooGroup.Constructors[0].Name.Name)
+	}
+
+	// FooBar should have 2 constructors: NewFooBar and NewFooBarBaz
+	if len(fooBarGroup.Constructors) != 2 {
+		t.Errorf("FooBar constructors = %d, want 2", len(fooBarGroup.Constructors))
+	} else {
+		names := make(map[string]bool)
+		for _, c := range fooBarGroup.Constructors {
+			names[c.Name.Name] = true
+		}
+		if !names["NewFooBar"] {
+			t.Error("NewFooBar not found in FooBar constructors")
+		}
+		if !names["NewFooBarBaz"] {
+			t.Error("NewFooBarBaz not found in FooBar constructors")
+		}
+	}
+
+	// No standalone functions - all should be constructors
+	if len(cat.ExportedFuncs) != 0 {
+		t.Errorf("expected 0 standalone funcs, got %d", len(cat.ExportedFuncs))
 	}
 }
