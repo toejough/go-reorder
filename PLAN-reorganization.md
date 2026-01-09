@@ -9,10 +9,10 @@
 | 3. Extract internal/emit | Complete | test(emit), feat(emit) |
 | 4. Extract internal/reassemble | Complete | test(reassemble), feat(reassemble) |
 | 5. Clean up root package | Complete | refactor(root) |
-| 6. Split CLI into files | Not started | |
+| 6. Split CLI into files | Complete | refactor(cli) |
 | 7. Clean up demos and docs | Not started | |
 
-**Current**: Phase 5 complete, ready for review before Phase 6
+**Current**: Phase 6 complete, ready for review before Phase 7
 
 ---
 
