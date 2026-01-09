@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"go/token"
 	"slices"
-	"sort"
-	"strings"
 
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 
-	internalast "github.com/toejough/go-reorder/internal/ast"
+	"github.com/toejough/go-reorder/internal/categorize"
 )
 
 // Section represents a declaration section in a Go file.
@@ -61,7 +59,7 @@ func AnalyzeSectionOrder(src string) (*SectionOrder, error) {
 	for _, decl := range file.Decls {
 		currentPos++
 
-		sectionName := identifySection(decl)
+		sectionName := categorize.IdentifySection(decl)
 		if sectionName == "" {
 			continue
 		}
@@ -92,8 +90,8 @@ func AnalyzeSectionOrder(src string) (*SectionOrder, error) {
 
 // File reorders declarations in a dst.File according to project conventions.
 func File(file *dst.File) error {
-	categorized := categorizeDeclarations(file)
-	reordered := reassembleDeclarations(categorized)
+	cat := categorize.CategorizeDeclarations(file)
+	reordered := reassembleDeclarations(cat)
 	file.Decls = reordered
 
 	return nil
@@ -101,8 +99,8 @@ func File(file *dst.File) error {
 
 // FileWithConfig reorders declarations in a dst.File using the provided configuration.
 func FileWithConfig(file *dst.File, cfg *Config) error {
-	categorized := categorizeDeclarations(file)
-	reordered := reassembleDeclarationsWithConfig(categorized, cfg)
+	cat := categorize.CategorizeDeclarations(file)
+	reordered := reassembleDeclarationsWithConfig(cat, cfg)
 	file.Decls = reordered
 
 	return nil
@@ -161,671 +159,154 @@ func SourceWithConfig(src string, cfg *Config) (string, error) {
 	return buf.String(), nil
 }
 
-// categorizedDecls holds declarations organized by category.
-type categorizedDecls struct {
-	imports          []dst.Decl
-	main             *dst.FuncDecl
-	init             []*dst.FuncDecl
-	exportedConsts   []*dst.ValueSpec
-	exportedEnums    []*enumGroup
-	exportedVars     []*dst.ValueSpec
-	exportedTypes    []*typeGroup
-	exportedFuncs    []*dst.FuncDecl
-	unexportedConsts []*dst.ValueSpec
-	unexportedEnums  []*enumGroup
-	unexportedVars   []*dst.ValueSpec
-	unexportedTypes  []*typeGroup
-	unexportedFuncs  []*dst.FuncDecl
-	uncategorized    []dst.Decl
-}
-
-// enumGroup pairs an enum type with its iota const block and associated methods.
-type enumGroup struct {
-	typeName          string
-	typeDecl          *dst.GenDecl
-	constDecl         *dst.GenDecl
-	exportedMethods   []*dst.FuncDecl
-	unexportedMethods []*dst.FuncDecl
-}
-
-// typeGroup holds a type and its associated constructors and methods.
-type typeGroup struct {
-	typeName          string
-	typeDecl          *dst.GenDecl
-	constructors      []*dst.FuncDecl
-	exportedMethods   []*dst.FuncDecl
-	unexportedMethods []*dst.FuncDecl
-}
-
-// categorizeDeclarations organizes all declarations by category.
-//
-//nolint:gocognit,gocyclo,cyclop,funlen,maintidx // Complex by nature - handles all Go declaration types
-func categorizeDeclarations(file *dst.File) *categorizedDecls {
-	cat := &categorizedDecls{}
-
-	// Maps for grouping
-	typeGroups := make(map[string]*typeGroup)
-	enumTypes := make(map[string]bool)
-	iotaBlocks := make(map[string]*dst.GenDecl)
-
-	// First pass: collect all type names
-	for _, decl := range file.Decls {
-		if genDecl, ok := decl.(*dst.GenDecl); ok && genDecl.Tok == token.TYPE {
-			for _, spec := range genDecl.Specs {
-				if tspec, ok := spec.(*dst.TypeSpec); ok {
-					typeName := tspec.Name.Name
-					typeGroups[typeName] = &typeGroup{typeName: typeName}
-				}
-			}
-		}
-	}
-
-	// Second pass: categorize all declarations
-	for _, decl := range file.Decls {
-		switch genDecl := decl.(type) {
-		case *dst.GenDecl:
-			//nolint:exhaustive // We only care about IMPORT/CONST/VAR/TYPE; other tokens are intentionally ignored
-			switch genDecl.Tok {
-			case token.IMPORT:
-				cat.imports = append(cat.imports, genDecl)
-			case token.CONST:
-				if internalast.IsIotaBlock(genDecl) { //nolint:nestif // Categorization logic requires nested conditions
-					// Extract type from first spec
-					typeName := internalast.ExtractEnumType(genDecl)
-					exported := internalast.IsExported(typeName)
-
-					iotaBlocks[typeName] = genDecl
-					if exported {
-						cat.exportedEnums = append(cat.exportedEnums, &enumGroup{
-							typeName:  typeName,
-							constDecl: genDecl,
-						})
-					} else {
-						cat.unexportedEnums = append(cat.unexportedEnums, &enumGroup{
-							typeName:  typeName,
-							constDecl: genDecl,
-						})
-					}
-
-					enumTypes[typeName] = true
-				} else {
-					// Regular const - extract specs for merging
-					for _, spec := range genDecl.Specs {
-						if vspec, ok := spec.(*dst.ValueSpec); ok {
-							if len(vspec.Names) > 0 {
-								exported := internalast.IsExported(vspec.Names[0].Name)
-								if exported {
-									cat.exportedConsts = append(cat.exportedConsts, vspec)
-								} else {
-									cat.unexportedConsts = append(cat.unexportedConsts, vspec)
-								}
-							}
-						}
-					}
-				}
-			case token.VAR:
-				// Extract specs for merging
-				for _, spec := range genDecl.Specs {
-					if vspec, ok := spec.(*dst.ValueSpec); ok {
-						if len(vspec.Names) > 0 {
-							exported := internalast.IsExported(vspec.Names[0].Name)
-							if exported {
-								cat.exportedVars = append(cat.exportedVars, vspec)
-							} else {
-								cat.unexportedVars = append(cat.unexportedVars, vspec)
-							}
-						}
-					}
-				}
-			case token.TYPE:
-				// Extract type name
-				for _, spec := range genDecl.Specs {
-					if tspec, ok := spec.(*dst.TypeSpec); ok { //nolint:nestif // Type extraction requires nested type assertions
-						typeName := tspec.Name.Name
-						exported := internalast.IsExported(typeName)
-
-						// Create or get type group
-						if typeGroups[typeName] == nil {
-							typeGroups[typeName] = &typeGroup{
-								typeName: typeName,
-							}
-						}
-
-						typeGroups[typeName].typeDecl = genDecl
-
-						// Add to categorized list if not an enum type
-						if !enumTypes[typeName] {
-							if exported {
-								cat.exportedTypes = append(cat.exportedTypes, typeGroups[typeName])
-							} else {
-								cat.unexportedTypes = append(cat.unexportedTypes, typeGroups[typeName])
-							}
-						}
-					}
-				}
-			default:
-				// Other token types are ignored
-			}
-		case *dst.FuncDecl:
-			switch {
-			case genDecl.Name.Name == "main" && genDecl.Recv == nil:
-				cat.main = genDecl
-			case genDecl.Name.Name == "init" && genDecl.Recv == nil:
-				cat.init = append(cat.init, genDecl)
-			case genDecl.Recv != nil:
-				// Method - associate with type
-				typeName := internalast.ExtractReceiverTypeName(genDecl.Recv)
-				if typeGroups[typeName] == nil {
-					typeGroups[typeName] = &typeGroup{
-						typeName: typeName,
-					}
-				}
-
-				methodExported := internalast.IsExported(genDecl.Name.Name)
-				if methodExported {
-					typeGroups[typeName].exportedMethods = append(typeGroups[typeName].exportedMethods, genDecl)
-				} else {
-					typeGroups[typeName].unexportedMethods = append(typeGroups[typeName].unexportedMethods, genDecl)
-				}
-			default:
-				// Standalone function or constructor
-				funcName := genDecl.Name.Name
-				exported := internalast.IsExported(funcName)
-
-				// Check if it's a constructor (NewTypeName pattern)
-				if strings.HasPrefix(funcName, "New") { //nolint:nestif // Constructor matching requires nested logic
-					suffix := funcName[3:] // Remove "New" prefix
-
-					// Try exact match first (e.g., NewConfig → Config)
-					if typeGroups[suffix] != nil {
-						typeGroups[suffix].constructors = append(typeGroups[suffix].constructors, genDecl)
-						continue
-					}
-
-					// Try longest match if suffix contains type name (e.g., NewConfigWithTimeout → Config, NewRealFileOps → FileOps)
-					// Sort type names by length (longest first) to get best match
-					var typeNames []string
-					for tn := range typeGroups {
-						typeNames = append(typeNames, tn)
-					}
-
-					sort.Slice(typeNames, func(i, j int) bool {
-						return len(typeNames[i]) > len(typeNames[j])
-					})
-
-					matched := false
-
-					for _, tn := range typeNames {
-						if strings.Contains(suffix, tn) {
-							if tg := typeGroups[tn]; tg != nil {
-								tg.constructors = append(tg.constructors, genDecl)
-								matched = true
-
-								break
-							}
-						}
-					}
-
-					if matched {
-						continue
-					}
-				}
-
-				// Not a constructor, add to standalone functions
-				if exported {
-					cat.exportedFuncs = append(cat.exportedFuncs, genDecl)
-				} else {
-					cat.unexportedFuncs = append(cat.unexportedFuncs, genDecl)
-				}
-			}
-		}
-	}
-
-	// Second pass: pair enum types with their const blocks and transfer methods
-	for _, enumGroup := range cat.exportedEnums {
-		if typeGroups[enumGroup.typeName] != nil {
-			enumGroup.typeDecl = typeGroups[enumGroup.typeName].typeDecl
-			// Transfer methods from typeGroup to enumGroup
-			enumGroup.exportedMethods = typeGroups[enumGroup.typeName].exportedMethods
-			enumGroup.unexportedMethods = typeGroups[enumGroup.typeName].unexportedMethods
-			// Remove from regular types
-			for i, tg := range cat.exportedTypes {
-				if tg.typeName == enumGroup.typeName {
-					cat.exportedTypes = append(cat.exportedTypes[:i], cat.exportedTypes[i+1:]...)
-					break
-				}
-			}
-		}
-	}
-
-	for _, enumGroup := range cat.unexportedEnums {
-		if typeGroups[enumGroup.typeName] != nil {
-			enumGroup.typeDecl = typeGroups[enumGroup.typeName].typeDecl
-			// Transfer methods from typeGroup to enumGroup
-			enumGroup.exportedMethods = typeGroups[enumGroup.typeName].exportedMethods
-			enumGroup.unexportedMethods = typeGroups[enumGroup.typeName].unexportedMethods
-			// Remove from regular types
-			for i, tg := range cat.unexportedTypes {
-				if tg.typeName == enumGroup.typeName {
-					cat.unexportedTypes = append(cat.unexportedTypes[:i], cat.unexportedTypes[i+1:]...)
-					break
-				}
-			}
-		}
-	}
-
-	// Third pass: add method-only typeGroups (no type declaration)
-	for _, tg := range typeGroups {
-		if tg.typeDecl == nil && (len(tg.exportedMethods) > 0 || len(tg.unexportedMethods) > 0) {
-			if internalast.IsExported(tg.typeName) {
-				cat.exportedTypes = append(cat.exportedTypes, tg)
-			} else {
-				cat.unexportedTypes = append(cat.unexportedTypes, tg)
-			}
-		}
-	}
-
-	// Sort everything
-	sortCategorized(cat)
-
-	return cat
-}
-
-// collectUncategorized moves declarations from excluded sections to uncategorized.
-func collectUncategorized(cat *categorizedDecls, includedSections map[string]bool) {
-	if !includedSections["exported_consts"] && len(cat.exportedConsts) > 0 {
-		cat.uncategorized = append(cat.uncategorized, mergeConstSpecs(cat.exportedConsts, "Exported constants."))
-		cat.exportedConsts = nil
-	}
-	if !includedSections["exported_vars"] && len(cat.exportedVars) > 0 {
-		cat.uncategorized = append(cat.uncategorized, mergeVarSpecs(cat.exportedVars, "Exported variables."))
-		cat.exportedVars = nil
-	}
-	if !includedSections["exported_funcs"] {
-		for _, fn := range cat.exportedFuncs {
-			fn.Decs.Before = dst.EmptyLine
-			cat.uncategorized = append(cat.uncategorized, fn)
-		}
-		cat.exportedFuncs = nil
-	}
-	if !includedSections["unexported_consts"] && len(cat.unexportedConsts) > 0 {
-		cat.uncategorized = append(cat.uncategorized, mergeConstSpecs(cat.unexportedConsts, "unexported constants."))
-		cat.unexportedConsts = nil
-	}
-	if !includedSections["unexported_vars"] && len(cat.unexportedVars) > 0 {
-		cat.uncategorized = append(cat.uncategorized, mergeVarSpecs(cat.unexportedVars, "unexported variables."))
-		cat.unexportedVars = nil
-	}
-	if !includedSections["unexported_funcs"] {
-		for _, fn := range cat.unexportedFuncs {
-			fn.Decs.Before = dst.EmptyLine
-			cat.uncategorized = append(cat.uncategorized, fn)
-		}
-		cat.unexportedFuncs = nil
-	}
-	// Handle types (includes type decl, constructors, methods)
-	if !includedSections["exported_types"] {
-		for _, tg := range cat.exportedTypes {
-			if tg.typeDecl != nil {
-				tg.typeDecl.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, tg.typeDecl)
-			}
-			for _, ctor := range tg.constructors {
-				ctor.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, ctor)
-			}
-			for _, m := range tg.exportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-			for _, m := range tg.unexportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-		}
-		cat.exportedTypes = nil
-	}
-	if !includedSections["unexported_types"] {
-		for _, tg := range cat.unexportedTypes {
-			if tg.typeDecl != nil {
-				tg.typeDecl.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, tg.typeDecl)
-			}
-			for _, ctor := range tg.constructors {
-				ctor.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, ctor)
-			}
-			for _, m := range tg.exportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-			for _, m := range tg.unexportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-		}
-		cat.unexportedTypes = nil
-	}
-	// Handle enums (includes type decl, iota const, methods)
-	if !includedSections["exported_enums"] {
-		for _, eg := range cat.exportedEnums {
-			if eg.typeDecl != nil {
-				eg.typeDecl.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, eg.typeDecl)
-			}
-			if eg.constDecl != nil {
-				eg.constDecl.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, eg.constDecl)
-			}
-			for _, m := range eg.exportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-			for _, m := range eg.unexportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-		}
-		cat.exportedEnums = nil
-	}
-	if !includedSections["unexported_enums"] {
-		for _, eg := range cat.unexportedEnums {
-			if eg.typeDecl != nil {
-				eg.typeDecl.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, eg.typeDecl)
-			}
-			if eg.constDecl != nil {
-				eg.constDecl.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, eg.constDecl)
-			}
-			for _, m := range eg.exportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-			for _, m := range eg.unexportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-		}
-		cat.unexportedEnums = nil
-	}
-}
-
-
-// identifySection determines which section a declaration belongs to.
-//
-//nolint:gocognit,cyclop,funlen,nestif,varnamelen // Complex type checking is inherent to declaration categorization
-func identifySection(decl dst.Decl) string {
-	switch d := decl.(type) {
-	case *dst.GenDecl:
-		if d.Tok == token.IMPORT {
-			return "Imports"
-		}
-
-		if d.Tok == token.CONST {
-			if internalast.IsIotaBlock(d) {
-				typeName := internalast.ExtractEnumType(d)
-				if internalast.IsExported(typeName) {
-					return "Exported Enums"
-				}
-
-				return "unexported enums"
-			}
-			// Check if it's a merged const block
-			if len(d.Specs) > 0 {
-				if vspec, ok := d.Specs[0].(*dst.ValueSpec); ok {
-					if len(vspec.Names) > 0 {
-						if internalast.IsExported(vspec.Names[0].Name) {
-							return "Exported Constants"
-						}
-
-						return "unexported constants"
-					}
-				}
-			}
-		}
-
-		if d.Tok == token.VAR {
-			if len(d.Specs) > 0 {
-				if vspec, ok := d.Specs[0].(*dst.ValueSpec); ok {
-					if len(vspec.Names) > 0 {
-						if internalast.IsExported(vspec.Names[0].Name) {
-							return "Exported Variables"
-						}
-
-						return "unexported variables"
-					}
-				}
-			}
-		}
-
-		if d.Tok == token.TYPE {
-			if len(d.Specs) > 0 {
-				if tspec, ok := d.Specs[0].(*dst.TypeSpec); ok {
-					if internalast.IsExported(tspec.Name.Name) {
-						return "Exported Types"
-					}
-
-					return "unexported types"
-				}
-			}
-		}
-	case *dst.FuncDecl:
-		if d.Name.Name == "main" && d.Recv == nil {
-			return "main()"
-		}
-		// Skip methods (they're part of type groups)
-		if d.Recv != nil {
-			typeName := internalast.ExtractReceiverTypeName(d.Recv)
-			if internalast.IsExported(typeName) {
-				return "Exported Types"
-			}
-
-			return "unexported types"
-		}
-
-		if internalast.IsExported(d.Name.Name) {
-			return "Exported Functions"
-		}
-
-		return "unexported functions"
-	}
-
-	return ""
-}
-
-// mergeConstSpecs creates a single const block from multiple specs.
-func mergeConstSpecs(specs []*dst.ValueSpec, comment string) *dst.GenDecl {
-	dstSpecs := make([]dst.Spec, 0, len(specs))
-
-	for _, spec := range specs {
-		// Clear any existing decorations from the spec
-		spec.Decs.Before = dst.NewLine
-		spec.Decs.After = dst.NewLine
-		dstSpecs = append(dstSpecs, spec)
-	}
-
-	decl := &dst.GenDecl{
-		Tok:    token.CONST,
-		Lparen: true, // Force parentheses
-		Specs:  dstSpecs,
-	}
-	decl.Decs.Before = dst.EmptyLine
-	decl.Decs.Start.Append("// " + comment)
-
-	return decl
-}
-
-// mergeVarSpecs creates a single var block from multiple specs.
-func mergeVarSpecs(specs []*dst.ValueSpec, comment string) *dst.GenDecl {
-	dstSpecs := make([]dst.Spec, 0, len(specs))
-
-	for _, spec := range specs {
-		// Clear any existing decorations from the spec
-		spec.Decs.Before = dst.NewLine
-		spec.Decs.After = dst.NewLine
-		dstSpecs = append(dstSpecs, spec)
-	}
-
-	decl := &dst.GenDecl{
-		Tok:    token.VAR,
-		Lparen: true, // Force parentheses
-		Specs:  dstSpecs,
-	}
-	decl.Decs.Before = dst.EmptyLine
-	decl.Decs.Start.Append("// " + comment)
-
-	return decl
-}
-
 // reassembleDeclarations builds the final ordered declaration list.
 //
 //nolint:gocognit,cyclop,funlen // Complex by design - assembles all declaration categories in correct order
-func reassembleDeclarations(cat *categorizedDecls) []dst.Decl {
+func reassembleDeclarations(cat *categorize.CategorizedDecls) []dst.Decl {
 	const extraCapacity = 10 // Extra capacity for main + merged const/var blocks
 
 	// Pre-allocate with estimated capacity
-	estimatedSize := len(cat.imports) + len(cat.exportedConsts) + len(cat.exportedEnums) +
-		len(cat.exportedVars) + len(cat.exportedTypes) + len(cat.exportedFuncs) +
-		len(cat.unexportedConsts) + len(cat.unexportedEnums) + len(cat.unexportedVars) +
-		len(cat.unexportedTypes) + len(cat.unexportedFuncs) + extraCapacity
+	estimatedSize := len(cat.Imports) + len(cat.ExportedConsts) + len(cat.ExportedEnums) +
+		len(cat.ExportedVars) + len(cat.ExportedTypes) + len(cat.ExportedFuncs) +
+		len(cat.UnexportedConsts) + len(cat.UnexportedEnums) + len(cat.UnexportedVars) +
+		len(cat.UnexportedTypes) + len(cat.UnexportedFuncs) + extraCapacity
 
 	decls := make([]dst.Decl, 0, estimatedSize)
 
 	// Imports
-	decls = append(decls, cat.imports...)
+	decls = append(decls, cat.Imports...)
 
 	// main() if present
-	if cat.main != nil {
-		decls = append(decls, cat.main)
+	if cat.Main != nil {
+		decls = append(decls, cat.Main)
 	}
 
 	// Exported constants (merged)
-	if len(cat.exportedConsts) > 0 {
-		constDecl := mergeConstSpecs(cat.exportedConsts, "Exported constants.")
+	if len(cat.ExportedConsts) > 0 {
+		constDecl := categorize.MergeConstSpecs(cat.ExportedConsts, "Exported constants.")
 		decls = append(decls, constDecl)
 	}
 
 	// Exported enums (type + const block pairs + methods)
-	for _, enumGrp := range cat.exportedEnums {
-		if enumGrp.typeDecl != nil {
-			enumGrp.typeDecl.Decs.Before = dst.EmptyLine
-			decls = append(decls, enumGrp.typeDecl)
+	for _, enumGrp := range cat.ExportedEnums {
+		if enumGrp.TypeDecl != nil {
+			enumGrp.TypeDecl.Decs.Before = dst.EmptyLine
+			decls = append(decls, enumGrp.TypeDecl)
 		}
 		// Add comment header (clear existing first to avoid duplicates)
-		enumGrp.constDecl.Decs.Start = nil
-		enumGrp.constDecl.Decs.Before = dst.EmptyLine
-		enumGrp.constDecl.Decs.Start.Append(fmt.Sprintf("// %s values.", enumGrp.typeName))
-		decls = append(decls, enumGrp.constDecl)
+		enumGrp.ConstDecl.Decs.Start = nil
+		enumGrp.ConstDecl.Decs.Before = dst.EmptyLine
+		enumGrp.ConstDecl.Decs.Start.Append(fmt.Sprintf("// %s values.", enumGrp.TypeName))
+		decls = append(decls, enumGrp.ConstDecl)
 
 		// Add methods (exported first, then unexported)
-		for _, method := range enumGrp.exportedMethods {
+		for _, method := range enumGrp.ExportedMethods {
 			method.Decs.Before = dst.EmptyLine
 			decls = append(decls, method)
 		}
 
-		for _, method := range enumGrp.unexportedMethods {
+		for _, method := range enumGrp.UnexportedMethods {
 			method.Decs.Before = dst.EmptyLine
 			decls = append(decls, method)
 		}
 	}
 
 	// Exported variables (merged)
-	if len(cat.exportedVars) > 0 {
-		varDecl := mergeVarSpecs(cat.exportedVars, "Exported variables.")
+	if len(cat.ExportedVars) > 0 {
+		varDecl := categorize.MergeVarSpecs(cat.ExportedVars, "Exported variables.")
 		decls = append(decls, varDecl)
 	}
 
 	// Exported types (with constructors and methods)
-	for _, typeGrp := range cat.exportedTypes {
-		if typeGrp.typeDecl != nil {
-			typeGrp.typeDecl.Decs.Before = dst.EmptyLine
-			decls = append(decls, typeGrp.typeDecl)
+	for _, typeGrp := range cat.ExportedTypes {
+		if typeGrp.TypeDecl != nil {
+			typeGrp.TypeDecl.Decs.Before = dst.EmptyLine
+			decls = append(decls, typeGrp.TypeDecl)
 		}
 
-		for _, ctor := range typeGrp.constructors {
+		for _, ctor := range typeGrp.Constructors {
 			ctor.Decs.Before = dst.EmptyLine
 			decls = append(decls, ctor)
 		}
 
-		for _, method := range typeGrp.exportedMethods {
+		for _, method := range typeGrp.ExportedMethods {
 			method.Decs.Before = dst.EmptyLine
 			decls = append(decls, method)
 		}
 
-		for _, method := range typeGrp.unexportedMethods {
+		for _, method := range typeGrp.UnexportedMethods {
 			method.Decs.Before = dst.EmptyLine
 			decls = append(decls, method)
 		}
 	}
 
 	// Exported standalone functions
-	for _, fn := range cat.exportedFuncs {
+	for _, fn := range cat.ExportedFuncs {
 		fn.Decs.Before = dst.EmptyLine
 		decls = append(decls, fn)
 	}
 
 	// Unexported constants (merged)
-	if len(cat.unexportedConsts) > 0 {
-		constDecl := mergeConstSpecs(cat.unexportedConsts, "unexported constants.")
+	if len(cat.UnexportedConsts) > 0 {
+		constDecl := categorize.MergeConstSpecs(cat.UnexportedConsts, "unexported constants.")
 		decls = append(decls, constDecl)
 	}
 
 	// Unexported enums (type + const block pairs + methods)
-	for _, enumGrp := range cat.unexportedEnums {
-		if enumGrp.typeDecl != nil {
-			enumGrp.typeDecl.Decs.Before = dst.EmptyLine
-			decls = append(decls, enumGrp.typeDecl)
+	for _, enumGrp := range cat.UnexportedEnums {
+		if enumGrp.TypeDecl != nil {
+			enumGrp.TypeDecl.Decs.Before = dst.EmptyLine
+			decls = append(decls, enumGrp.TypeDecl)
 		}
 		// Add comment header (clear existing first to avoid duplicates)
-		enumGrp.constDecl.Decs.Start = nil
-		enumGrp.constDecl.Decs.Before = dst.EmptyLine
-		enumGrp.constDecl.Decs.Start.Append(fmt.Sprintf("// %s values.", enumGrp.typeName))
-		decls = append(decls, enumGrp.constDecl)
+		enumGrp.ConstDecl.Decs.Start = nil
+		enumGrp.ConstDecl.Decs.Before = dst.EmptyLine
+		enumGrp.ConstDecl.Decs.Start.Append(fmt.Sprintf("// %s values.", enumGrp.TypeName))
+		decls = append(decls, enumGrp.ConstDecl)
 
 		// Add methods (exported first, then unexported)
-		for _, method := range enumGrp.exportedMethods {
+		for _, method := range enumGrp.ExportedMethods {
 			method.Decs.Before = dst.EmptyLine
 			decls = append(decls, method)
 		}
 
-		for _, method := range enumGrp.unexportedMethods {
+		for _, method := range enumGrp.UnexportedMethods {
 			method.Decs.Before = dst.EmptyLine
 			decls = append(decls, method)
 		}
 	}
 
 	// Unexported variables (merged)
-	if len(cat.unexportedVars) > 0 {
-		varDecl := mergeVarSpecs(cat.unexportedVars, "unexported variables.")
+	if len(cat.UnexportedVars) > 0 {
+		varDecl := categorize.MergeVarSpecs(cat.UnexportedVars, "unexported variables.")
 		decls = append(decls, varDecl)
 	}
 
 	// Unexported types (with constructors and methods)
-	for _, typeGrp := range cat.unexportedTypes {
-		if typeGrp.typeDecl != nil {
-			typeGrp.typeDecl.Decs.Before = dst.EmptyLine
-			decls = append(decls, typeGrp.typeDecl)
+	for _, typeGrp := range cat.UnexportedTypes {
+		if typeGrp.TypeDecl != nil {
+			typeGrp.TypeDecl.Decs.Before = dst.EmptyLine
+			decls = append(decls, typeGrp.TypeDecl)
 		}
 
-		for _, ctor := range typeGrp.constructors {
+		for _, ctor := range typeGrp.Constructors {
 			ctor.Decs.Before = dst.EmptyLine
 			decls = append(decls, ctor)
 		}
 
-		for _, method := range typeGrp.exportedMethods {
+		for _, method := range typeGrp.ExportedMethods {
 			method.Decs.Before = dst.EmptyLine
 			decls = append(decls, method)
 		}
 
-		for _, method := range typeGrp.unexportedMethods {
+		for _, method := range typeGrp.UnexportedMethods {
 			method.Decs.Before = dst.EmptyLine
 			decls = append(decls, method)
 		}
 	}
 
 	// Unexported standalone functions
-	for _, fn := range cat.unexportedFuncs {
+	for _, fn := range cat.UnexportedFuncs {
 		fn.Decs.Before = dst.EmptyLine
 		decls = append(decls, fn)
 	}
@@ -834,7 +315,7 @@ func reassembleDeclarations(cat *categorizedDecls) []dst.Decl {
 }
 
 // reassembleDeclarationsWithConfig builds the ordered declaration list using config.
-func reassembleDeclarationsWithConfig(cat *categorizedDecls, cfg *Config) []dst.Decl {
+func reassembleDeclarationsWithConfig(cat *categorize.CategorizedDecls, cfg *Config) []dst.Decl {
 	// Build set of sections in config
 	configSections := make(map[string]bool)
 	for _, s := range cfg.Sections.Order {
@@ -843,7 +324,7 @@ func reassembleDeclarationsWithConfig(cat *categorizedDecls, cfg *Config) []dst.
 
 	// Collect uncategorized from sections not in config (if mode allows)
 	if cfg.Behavior.Mode != "drop" {
-		collectUncategorized(cat, configSections)
+		categorize.CollectUncategorized(cat, configSections)
 	}
 
 	decls := make([]dst.Decl, 0)
@@ -856,89 +337,4 @@ func reassembleDeclarationsWithConfig(cat *categorizedDecls, cfg *Config) []dst.
 	}
 
 	return decls
-}
-
-// sortCategorized sorts all categorized declarations alphabetically.
-func sortCategorized(cat *categorizedDecls) {
-	// Sort const specs by name
-	sort.Slice(cat.exportedConsts, func(i, j int) bool {
-		return cat.exportedConsts[i].Names[0].Name < cat.exportedConsts[j].Names[0].Name
-	})
-	sort.Slice(cat.unexportedConsts, func(i, j int) bool {
-		return cat.unexportedConsts[i].Names[0].Name < cat.unexportedConsts[j].Names[0].Name
-	})
-
-	// Sort var specs by name
-	sort.Slice(cat.exportedVars, func(i, j int) bool {
-		return cat.exportedVars[i].Names[0].Name < cat.exportedVars[j].Names[0].Name
-	})
-	sort.Slice(cat.unexportedVars, func(i, j int) bool {
-		return cat.unexportedVars[i].Names[0].Name < cat.unexportedVars[j].Names[0].Name
-	})
-
-	// Sort enum groups by type name and their methods
-	sort.Slice(cat.exportedEnums, func(i, j int) bool {
-		return cat.exportedEnums[i].typeName < cat.exportedEnums[j].typeName
-	})
-	for _, enumGrp := range cat.exportedEnums {
-		sort.Slice(enumGrp.exportedMethods, func(i, j int) bool {
-			return enumGrp.exportedMethods[i].Name.Name < enumGrp.exportedMethods[j].Name.Name
-		})
-		sort.Slice(enumGrp.unexportedMethods, func(i, j int) bool {
-			return enumGrp.unexportedMethods[i].Name.Name < enumGrp.unexportedMethods[j].Name.Name
-		})
-	}
-
-	sort.Slice(cat.unexportedEnums, func(i, j int) bool {
-		return cat.unexportedEnums[i].typeName < cat.unexportedEnums[j].typeName
-	})
-	for _, enumGrp := range cat.unexportedEnums {
-		sort.Slice(enumGrp.exportedMethods, func(i, j int) bool {
-			return enumGrp.exportedMethods[i].Name.Name < enumGrp.exportedMethods[j].Name.Name
-		})
-		sort.Slice(enumGrp.unexportedMethods, func(i, j int) bool {
-			return enumGrp.unexportedMethods[i].Name.Name < enumGrp.unexportedMethods[j].Name.Name
-		})
-	}
-
-	// Sort type groups by type name
-	sort.Slice(cat.exportedTypes, func(i, j int) bool {
-		return cat.exportedTypes[i].typeName < cat.exportedTypes[j].typeName
-	})
-	sort.Slice(cat.unexportedTypes, func(i, j int) bool {
-		return cat.unexportedTypes[i].typeName < cat.unexportedTypes[j].typeName
-	})
-
-	// Sort within each type group
-	for _, typeGrp := range cat.exportedTypes {
-		sort.Slice(typeGrp.constructors, func(i, j int) bool {
-			return typeGrp.constructors[i].Name.Name < typeGrp.constructors[j].Name.Name
-		})
-		sort.Slice(typeGrp.exportedMethods, func(i, j int) bool {
-			return typeGrp.exportedMethods[i].Name.Name < typeGrp.exportedMethods[j].Name.Name
-		})
-		sort.Slice(typeGrp.unexportedMethods, func(i, j int) bool {
-			return typeGrp.unexportedMethods[i].Name.Name < typeGrp.unexportedMethods[j].Name.Name
-		})
-	}
-
-	for _, typeGrp := range cat.unexportedTypes {
-		sort.Slice(typeGrp.constructors, func(i, j int) bool {
-			return typeGrp.constructors[i].Name.Name < typeGrp.constructors[j].Name.Name
-		})
-		sort.Slice(typeGrp.exportedMethods, func(i, j int) bool {
-			return typeGrp.exportedMethods[i].Name.Name < typeGrp.exportedMethods[j].Name.Name
-		})
-		sort.Slice(typeGrp.unexportedMethods, func(i, j int) bool {
-			return typeGrp.unexportedMethods[i].Name.Name < typeGrp.unexportedMethods[j].Name.Name
-		})
-	}
-
-	// Sort standalone functions
-	sort.Slice(cat.exportedFuncs, func(i, j int) bool {
-		return cat.exportedFuncs[i].Name.Name < cat.exportedFuncs[j].Name.Name
-	})
-	sort.Slice(cat.unexportedFuncs, func(i, j int) bool {
-		return cat.unexportedFuncs[i].Name.Name < cat.unexportedFuncs[j].Name.Name
-	})
 }

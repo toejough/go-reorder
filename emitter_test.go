@@ -1,6 +1,10 @@
 package reorder
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/toejough/go-reorder/internal/categorize"
+)
 
 func TestEmitterRegistry(t *testing.T) {
 	t.Run("all sections have emitters", func(t *testing.T) {
@@ -21,7 +25,7 @@ func TestEmitterRegistry(t *testing.T) {
 }
 
 func TestEmittersHandleEmpty(t *testing.T) {
-	cat := &categorizedDecls{}
+	cat := &categorize.CategorizedDecls{}
 	cfg := DefaultConfig()
 
 	for section := range ValidSections {
