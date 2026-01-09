@@ -1,5 +1,0 @@
-[behavior]
-mode = "warn"
-
-[sections]
-order = ["imports", "main", "exported_types", "uncategorized"]

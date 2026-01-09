@@ -1,6 +1,0 @@
-# Only keep imports and funcs - everything else goes to uncategorized
-[sections]
-order = ["imports", "exported_funcs", "uncategorized"]
-
-[behavior]
-mode = "append"
