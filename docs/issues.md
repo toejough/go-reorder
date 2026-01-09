@@ -92,34 +92,6 @@ Standard issue structure organized by category:
 
 Issues to choose from for future work.
 
-### 4. Add test for ambiguous constructor matching
-
-#### Universal
-
-**Status**
-in progress
-
-**Description**
-Constructor matching uses longest-suffix match (`NewFooBar` matches `FooBar` over `Foo`), but this behavior is undocumented and untested for ambiguous cases.
-
-#### Planning
-
-**Rationale**
-Untested behavior could change unexpectedly. Document and test the current behavior to lock it in.
-
-**Acceptance**
-- Add test with types `Foo` and `FooBar` and constructor `NewFooBar()`
-- Add test with constructor `NewFoo()` to verify it matches `Foo` not `FooBar`
-- Document the matching algorithm in code comments
-
-**Effort**
-Small
-
-**Priority**
-Medium
-
----
-
 ### 5. Include source position in parse error messages
 
 #### Universal
@@ -359,6 +331,37 @@ Added comprehensive documentation to `CategorizeDeclarations()` explaining the f
 
 **Commit**
 696cb5c
+
+---
+
+### 4. Add test for ambiguous constructor matching
+
+#### Universal
+
+**Status**
+done
+
+**Description**
+Constructor matching uses longest-suffix match (`NewFooBar` matches `FooBar` over `Foo`), but this behavior was undocumented and untested.
+
+#### Work Tracking
+
+**Completed**
+2026-01-08
+
+**Commit**
+9756e34
+
+#### Documentation
+
+**Solution**
+Added `TestConstructorMatching_LongestMatchWins` test that verifies:
+- `NewFoo` matches type `Foo` (not `FooBar`)
+- `NewFooBar` matches type `FooBar` (longest match)
+- `NewFooBarBaz` matches type `FooBar` (contains longest match)
+
+**Files Modified**
+- internal/categorize/categorize_test.go: Added dedicated constructor matching test
 
 ---
 

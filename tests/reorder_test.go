@@ -1215,3 +1215,24 @@ const Version = "1.0"
 func hasSubstring(s, sub string) bool {
 	return indexOf(s, sub) != -1
 }
+
+func TestSource_ParseErrorIncludesPosition(t *testing.T) {
+	t.Parallel()
+
+	// Invalid Go code with error on line 3
+	input := `package example
+
+func 123InvalidName() {}
+`
+
+	_, err := reorder.Source(input)
+	if err == nil {
+		t.Fatal("Expected error for invalid Go code")
+	}
+
+	errMsg := err.Error()
+	// Error should include line number in format "line X" or "X:Y:" (line:column)
+	if !hasSubstring(errMsg, "line 3") && !hasSubstring(errMsg, "3:") {
+		t.Errorf("Error message should include line number, got: %s", errMsg)
+	}
+}
