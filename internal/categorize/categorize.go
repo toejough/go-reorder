@@ -49,15 +49,39 @@ type TypeGroup struct {
 
 // CategorizeDeclarations organizes all declarations by category.
 //
+// The algorithm uses four passes to properly handle Go's declaration patterns:
+//
+// Pass 1 - Collect type names: Builds a map of all type names defined in the file.
+// This is needed before Pass 2 so we can identify constructors (NewTypeName patterns)
+// and associate methods with their receiver types.
+//
+// Pass 2 - Categorize declarations: The main categorization pass. Processes each
+// declaration and assigns it to the appropriate category (imports, consts, vars,
+// types, funcs). Methods are associated with their receiver types, and constructors
+// are matched to types using a longest-suffix match algorithm.
+//
+// Pass 3 - Pair enums with types: Enum const blocks (iota patterns) are identified
+// in Pass 2, but their type definitions may appear separately. This pass pairs enum
+// const blocks with their type definitions and transfers methods from TypeGroup to
+// EnumGroup, then removes the type from the regular types list.
+//
+// Pass 4 - Add method-only types: Handles files that contain methods for types
+// defined elsewhere. TypeGroups that have methods but no TypeDecl are added to
+// the appropriate (exported/unexported) types list so they're not lost.
+//
 //nolint:gocognit,gocyclo,cyclop,funlen,maintidx // Complex by nature - handles all Go declaration types
 func CategorizeDeclarations(file *dst.File) *CategorizedDecls {
 	cat := &CategorizedDecls{}
 
-	// Maps for grouping
+	// Maps for grouping types with their methods and constructors
 	typeGroups := make(map[string]*TypeGroup)
+	// Track which type names are enums (have iota const blocks)
 	enumTypes := make(map[string]bool)
 
-	// First pass: collect all type names
+	// Pass 1: Collect all type names
+	// We need to know all types before categorizing so we can:
+	// - Match constructors (NewFoo) to their types (Foo)
+	// - Associate methods with their receiver types
 	for _, decl := range file.Decls {
 		if genDecl, ok := decl.(*dst.GenDecl); ok && genDecl.Tok == token.TYPE {
 			for _, spec := range genDecl.Specs {
@@ -69,7 +93,7 @@ func CategorizeDeclarations(file *dst.File) *CategorizedDecls {
 		}
 	}
 
-	// Second pass: categorize all declarations
+	// Pass 2: Categorize all declarations
 	for _, decl := range file.Decls {
 		switch genDecl := decl.(type) {
 		case *dst.GenDecl:
@@ -186,6 +210,10 @@ func CategorizeDeclarations(file *dst.File) *CategorizedDecls {
 				exported := ast.IsExported(funcName)
 
 				// Check if it's a constructor (NewTypeName pattern)
+				// Constructor matching algorithm:
+				// 1. Try exact match: NewConfig → Config
+				// 2. Try longest-suffix match: NewConfigWithTimeout → Config
+				//    (longest match wins to handle NewFooBar with types Foo and FooBar)
 				if strings.HasPrefix(funcName, "New") { //nolint:nestif // Constructor matching requires nested logic
 					suffix := funcName[3:] // Remove "New" prefix
 
@@ -195,8 +223,8 @@ func CategorizeDeclarations(file *dst.File) *CategorizedDecls {
 						continue
 					}
 
-					// Try longest match if suffix contains type name (e.g., NewConfigWithTimeout → Config, NewRealFileOps → FileOps)
-					// Sort type names by length (longest first) to get best match
+					// Try longest match if suffix contains type name
+					// Sort by length descending so FooBar matches before Foo
 					var typeNames []string
 					for tn := range typeGroups {
 						typeNames = append(typeNames, tn)
@@ -234,7 +262,12 @@ func CategorizeDeclarations(file *dst.File) *CategorizedDecls {
 		}
 	}
 
-	// Third pass: pair enum types with their const blocks and transfer methods
+	// Pass 3: Pair enum types with their const blocks
+	// Enum const blocks were added to cat.ExportedEnums/UnexportedEnums in Pass 2,
+	// but the corresponding type definitions went into typeGroups. This pass:
+	// - Links the TypeDecl to each EnumGroup
+	// - Transfers methods from TypeGroup to EnumGroup
+	// - Removes the type from cat.ExportedTypes/UnexportedTypes (since it's now in Enums)
 	for _, enumGroup := range cat.ExportedEnums {
 		if typeGroups[enumGroup.TypeName] != nil {
 			enumGroup.TypeDecl = typeGroups[enumGroup.TypeName].TypeDecl
@@ -267,7 +300,11 @@ func CategorizeDeclarations(file *dst.File) *CategorizedDecls {
 		}
 	}
 
-	// Fourth pass: add method-only TypeGroups (no type declaration)
+	// Pass 4: Add method-only TypeGroups
+	// Some files contain only methods for types defined elsewhere (common pattern for
+	// test helpers, large types split across files, etc.). These TypeGroups have methods
+	// but no TypeDecl (nil). We add them to the appropriate types list so they're included
+	// in the output. Without this pass, methods in such files would be silently dropped.
 	for _, tg := range typeGroups {
 		if tg.TypeDecl == nil && (len(tg.ExportedMethods) > 0 || len(tg.UnexportedMethods) > 0) {
 			if ast.IsExported(tg.TypeName) {

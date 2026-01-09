@@ -92,32 +92,6 @@ Standard issue structure organized by category:
 
 Issues to choose from for future work.
 
-### 2. Add defensive check in ExtractEnumType() for untyped first const
-
-#### Universal
-
-**Status**
-in progress
-
-**Description**
-`ExtractEnumType()` in `internal/ast/util.go` assumes the first const in an iota block has a type annotation. If the first const is untyped, the function returns an empty string, potentially causing enum detection to fail silently.
-
-#### Planning
-
-**Rationale**
-Defensive coding prevents silent failures. Edge cases in real-world code could trigger this.
-
-**Acceptance**
-- Add explicit handling for untyped first const case
-- Add test case demonstrating the edge case
-- Function should either find the type from a later spec or return empty string explicitly
-
-**Effort**
-Small
-
-**Priority**
-High
-
 ---
 
 ### 3. Document three-pass categorization algorithm
@@ -125,7 +99,7 @@ High
 #### Universal
 
 **Status**
-backlog
+in progress
 
 **Description**
 `CategorizeDeclarations()` in `internal/categorize/categorize.go` uses a three-pass algorithm but has no comments explaining why each pass exists or what it accomplishes.
@@ -358,6 +332,43 @@ Added a third pass in `categorizeDeclarations()` (lines 378-387) that identifies
 - reorder.go: Added third pass to categorize method-only typeGroups
 - reorder_test.go: Added 5 comprehensive regression tests + real-world glowsync test case
 - issues.md: Created issue tracker for the project
+
+---
+
+### 2. Add defensive check for untyped iota blocks
+
+#### Universal
+
+**Status**
+done
+
+**Description**
+Untyped iota blocks were incorrectly categorized as unexported enums with empty type name instead of regular constants.
+
+#### Planning
+
+**Effort**
+Small
+
+**Priority**
+High
+
+#### Work Tracking
+
+**Completed**
+2026-01-08
+
+**Commit**
+cd232a0
+
+#### Documentation
+
+**Solution**
+Modified `CategorizeDeclarations()` and `IdentifySection()` in `internal/categorize/categorize.go` to check if `typeName` is empty after calling `ExtractEnumType()`. If empty, treat as regular constants, not enum.
+
+**Files Modified**
+- internal/categorize/categorize.go: Check for empty typeName before treating as enum
+- internal/categorize/categorize_test.go: Added test cases for untyped iota blocks
 
 ---
 
