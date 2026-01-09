@@ -9,46 +9,53 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// ValidSections defines all recognized section names.
-var ValidSections = map[string]bool{
-	"imports":            true,
-	"main":               true,
-	"init":               true,
-	"exported_consts":    true,
-	"exported_enums":     true,
-	"exported_vars":      true,
-	"exported_types":     true,
-	"exported_funcs":     true,
-	"unexported_consts":  true,
-	"unexported_enums":   true,
-	"unexported_vars":    true,
-	"unexported_types":   true,
-	"unexported_funcs":   true,
-	"uncategorized":      true,
-}
+// Exported constants.
+const (
+	ConfigFileName = ".go-reorder.toml"
+)
 
-// ValidModes defines all recognized behavior modes.
-var ValidModes = map[string]bool{
-	"strict": true,
-	"warn":   true,
-	"append": true,
-	"drop":   true,
-}
+// Exported variables.
+var (
+	ErrInvalidConfig        = errors.New("invalid config")
+	ValidEnumLayoutElements = map[string]bool{
+		"typedef":            true,
+		"iota":               true,
+		"exported_methods":   true,
+		"unexported_methods": true,
+	}
+	ValidModes = map[string]bool{
+		"strict": true,
+		"warn":   true,
+		"append": true,
+		"drop":   true,
+	}
+	ValidSections = map[string]bool{
+		"imports":           true,
+		"main":              true,
+		"init":              true,
+		"exported_consts":   true,
+		"exported_enums":    true,
+		"exported_vars":     true,
+		"exported_types":    true,
+		"exported_funcs":    true,
+		"unexported_consts": true,
+		"unexported_enums":  true,
+		"unexported_vars":   true,
+		"unexported_types":  true,
+		"unexported_funcs":  true,
+		"uncategorized":     true,
+	}
+	ValidTypeLayoutElements = map[string]bool{
+		"typedef":            true,
+		"constructors":       true,
+		"exported_methods":   true,
+		"unexported_methods": true,
+	}
+)
 
-// ValidTypeLayoutElements defines valid elements for type layout.
-var ValidTypeLayoutElements = map[string]bool{
-	"typedef":            true,
-	"constructors":       true,
-	"exported_methods":   true,
-	"unexported_methods": true,
-}
-
-// ValidEnumLayoutElements defines valid elements for enum layout.
-var ValidEnumLayoutElements = map[string]bool{
-	"typedef":            true,
-	"iota":               true,
-	"exported_methods":   true,
-	"unexported_methods": true,
+// BehaviorConfig controls how the reorderer handles edge cases.
+type BehaviorConfig struct {
+	Mode string
 }
 
 // Config holds all configuration for go-reorder.
@@ -56,63 +63,6 @@ type Config struct {
 	Sections SectionsConfig
 	Types    TypesConfig
 	Behavior BehaviorConfig
-}
-
-// TypesConfig controls how types and enums are laid out internally.
-type TypesConfig struct {
-	TypeLayout []string
-	EnumLayout []string
-}
-
-// SectionsConfig controls declaration ordering.
-type SectionsConfig struct {
-	Order []string
-}
-
-// BehaviorConfig controls how the reorderer handles edge cases.
-type BehaviorConfig struct {
-	Mode string
-}
-
-// DefaultConfig returns the default configuration.
-func DefaultConfig() *Config {
-	return &Config{
-		Sections: SectionsConfig{
-			Order: []string{
-				"imports",
-				"main",
-				"init",
-				"exported_consts",
-				"exported_enums",
-				"exported_vars",
-				"exported_types",
-				"exported_funcs",
-				"unexported_consts",
-				"unexported_enums",
-				"unexported_vars",
-				"unexported_types",
-				"unexported_funcs",
-				"uncategorized",
-			},
-		},
-		Types: TypesConfig{
-			TypeLayout: []string{
-				"typedef",
-				"constructors",
-				"exported_methods",
-				"unexported_methods",
-			},
-			EnumLayout: []string{
-				"typedef",
-				"iota",
-				"exported_methods",
-				"unexported_methods",
-			},
-		},
-		Behavior: BehaviorConfig{
-			Mode: "strict",
-		},
-	}
 }
 
 // Validate checks that the config is valid.
@@ -160,8 +110,97 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// ErrInvalidConfig is returned when config validation fails.
-var ErrInvalidConfig = errors.New("invalid config")
+// SectionsConfig controls declaration ordering.
+type SectionsConfig struct {
+	Order []string
+}
+
+// TypesConfig controls how types and enums are laid out internally.
+type TypesConfig struct {
+	TypeLayout []string
+	EnumLayout []string
+}
+
+// DefaultConfig returns the default configuration.
+func DefaultConfig() *Config {
+	return &Config{
+		Sections: SectionsConfig{
+			Order: []string{
+				"imports",
+				"main",
+				"init",
+				"exported_consts",
+				"exported_enums",
+				"exported_vars",
+				"exported_types",
+				"exported_funcs",
+				"unexported_consts",
+				"unexported_enums",
+				"unexported_vars",
+				"unexported_types",
+				"unexported_funcs",
+				"uncategorized",
+			},
+		},
+		Types: TypesConfig{
+			TypeLayout: []string{
+				"typedef",
+				"constructors",
+				"exported_methods",
+				"unexported_methods",
+			},
+			EnumLayout: []string{
+				"typedef",
+				"iota",
+				"exported_methods",
+				"unexported_methods",
+			},
+		},
+		Behavior: BehaviorConfig{
+			Mode: "strict",
+		},
+	}
+}
+
+// FindConfig searches for a config file starting from the given directory,
+// walking up the directory tree until it finds one or reaches a boundary.
+// Returns empty string if no config file is found.
+// Boundaries are: .git directory, go.mod file, or filesystem root.
+func FindConfig(startDir string) (string, error) {
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		// Check for config file in current directory
+		configPath := filepath.Join(dir, ConfigFileName)
+		if _, err := os.Stat(configPath); err == nil {
+			return configPath, nil
+		}
+
+		// Check for boundaries
+		gitPath := filepath.Join(dir, ".git")
+		goModPath := filepath.Join(dir, "go.mod")
+
+		if _, err := os.Stat(gitPath); err == nil {
+			// Found .git, stop here (don't go above)
+			return "", nil
+		}
+		if _, err := os.Stat(goModPath); err == nil {
+			// Found go.mod, stop here (don't go above)
+			return "", nil
+		}
+
+		// Move to parent directory
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached filesystem root
+			return "", nil
+		}
+		dir = parent
+	}
+}
 
 // LoadConfig loads configuration from a TOML file.
 // If the file doesn't exist, returns default config.
@@ -202,6 +241,10 @@ func LoadConfig(path string) (*Config, error) {
 	return cfg, nil
 }
 
+type fileBehaviorConfig struct {
+	Mode string
+}
+
 // fileConfig mirrors Config but uses pointers/nil to detect unset values.
 type fileConfig struct {
 	Sections fileSectionsConfig
@@ -216,51 +259,4 @@ type fileSectionsConfig struct {
 type fileTypesConfig struct {
 	TypeLayout []string `toml:"type_layout"`
 	EnumLayout []string `toml:"enum_layout"`
-}
-
-type fileBehaviorConfig struct {
-	Mode string
-}
-
-// ConfigFileName is the name of the config file to look for.
-const ConfigFileName = ".go-reorder.toml"
-
-// FindConfig searches for a config file starting from the given directory,
-// walking up the directory tree until it finds one or reaches a boundary.
-// Returns empty string if no config file is found.
-// Boundaries are: .git directory, go.mod file, or filesystem root.
-func FindConfig(startDir string) (string, error) {
-	dir, err := filepath.Abs(startDir)
-	if err != nil {
-		return "", err
-	}
-
-	for {
-		// Check for config file in current directory
-		configPath := filepath.Join(dir, ConfigFileName)
-		if _, err := os.Stat(configPath); err == nil {
-			return configPath, nil
-		}
-
-		// Check for boundaries
-		gitPath := filepath.Join(dir, ".git")
-		goModPath := filepath.Join(dir, "go.mod")
-
-		if _, err := os.Stat(gitPath); err == nil {
-			// Found .git, stop here (don't go above)
-			return "", nil
-		}
-		if _, err := os.Stat(goModPath); err == nil {
-			// Found go.mod, stop here (don't go above)
-			return "", nil
-		}
-
-		// Move to parent directory
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			// Reached filesystem root
-			return "", nil
-		}
-		dir = parent
-	}
 }

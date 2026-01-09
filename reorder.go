@@ -99,6 +99,15 @@ func File(file *dst.File) error {
 	return nil
 }
 
+// FileWithConfig reorders declarations in a dst.File using the provided configuration.
+func FileWithConfig(file *dst.File, cfg *Config) error {
+	categorized := categorizeDeclarations(file)
+	reordered := reassembleDeclarationsWithConfig(categorized, cfg)
+	file.Decls = reordered
+
+	return nil
+}
+
 // Source reorders declarations in Go source code according to project conventions.
 // It preserves all comments and handles edge cases like iota blocks and type-method grouping.
 func Source(src string) (string, error) {
@@ -150,160 +159,6 @@ func SourceWithConfig(src string, cfg *Config) (string, error) {
 	}
 
 	return buf.String(), nil
-}
-
-// FileWithConfig reorders declarations in a dst.File using the provided configuration.
-func FileWithConfig(file *dst.File, cfg *Config) error {
-	categorized := categorizeDeclarations(file)
-	reordered := reassembleDeclarationsWithConfig(categorized, cfg)
-	file.Decls = reordered
-
-	return nil
-}
-
-// reassembleDeclarationsWithConfig builds the ordered declaration list using config.
-func reassembleDeclarationsWithConfig(cat *categorizedDecls, cfg *Config) []dst.Decl {
-	// Build set of sections in config
-	configSections := make(map[string]bool)
-	for _, s := range cfg.Sections.Order {
-		configSections[s] = true
-	}
-
-	// Collect uncategorized from sections not in config (if mode allows)
-	if cfg.Behavior.Mode != "drop" {
-		collectUncategorized(cat, configSections)
-	}
-
-	decls := make([]dst.Decl, 0)
-
-	for _, section := range cfg.Sections.Order {
-		emitter := getEmitter(section)
-		if emitter != nil {
-			decls = append(decls, emitter(cat, cfg)...)
-		}
-	}
-
-	return decls
-}
-
-// collectUncategorized moves declarations from excluded sections to uncategorized.
-func collectUncategorized(cat *categorizedDecls, includedSections map[string]bool) {
-	if !includedSections["exported_consts"] && len(cat.exportedConsts) > 0 {
-		cat.uncategorized = append(cat.uncategorized, mergeConstSpecs(cat.exportedConsts, "Exported constants."))
-		cat.exportedConsts = nil
-	}
-	if !includedSections["exported_vars"] && len(cat.exportedVars) > 0 {
-		cat.uncategorized = append(cat.uncategorized, mergeVarSpecs(cat.exportedVars, "Exported variables."))
-		cat.exportedVars = nil
-	}
-	if !includedSections["exported_funcs"] {
-		for _, fn := range cat.exportedFuncs {
-			fn.Decs.Before = dst.EmptyLine
-			cat.uncategorized = append(cat.uncategorized, fn)
-		}
-		cat.exportedFuncs = nil
-	}
-	if !includedSections["unexported_consts"] && len(cat.unexportedConsts) > 0 {
-		cat.uncategorized = append(cat.uncategorized, mergeConstSpecs(cat.unexportedConsts, "unexported constants."))
-		cat.unexportedConsts = nil
-	}
-	if !includedSections["unexported_vars"] && len(cat.unexportedVars) > 0 {
-		cat.uncategorized = append(cat.uncategorized, mergeVarSpecs(cat.unexportedVars, "unexported variables."))
-		cat.unexportedVars = nil
-	}
-	if !includedSections["unexported_funcs"] {
-		for _, fn := range cat.unexportedFuncs {
-			fn.Decs.Before = dst.EmptyLine
-			cat.uncategorized = append(cat.uncategorized, fn)
-		}
-		cat.unexportedFuncs = nil
-	}
-	// Handle types (includes type decl, constructors, methods)
-	if !includedSections["exported_types"] {
-		for _, tg := range cat.exportedTypes {
-			if tg.typeDecl != nil {
-				tg.typeDecl.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, tg.typeDecl)
-			}
-			for _, ctor := range tg.constructors {
-				ctor.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, ctor)
-			}
-			for _, m := range tg.exportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-			for _, m := range tg.unexportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-		}
-		cat.exportedTypes = nil
-	}
-	if !includedSections["unexported_types"] {
-		for _, tg := range cat.unexportedTypes {
-			if tg.typeDecl != nil {
-				tg.typeDecl.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, tg.typeDecl)
-			}
-			for _, ctor := range tg.constructors {
-				ctor.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, ctor)
-			}
-			for _, m := range tg.exportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-			for _, m := range tg.unexportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-		}
-		cat.unexportedTypes = nil
-	}
-	// Handle enums (includes type decl, iota const, methods)
-	if !includedSections["exported_enums"] {
-		for _, eg := range cat.exportedEnums {
-			if eg.typeDecl != nil {
-				eg.typeDecl.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, eg.typeDecl)
-			}
-			if eg.constDecl != nil {
-				eg.constDecl.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, eg.constDecl)
-			}
-			for _, m := range eg.exportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-			for _, m := range eg.unexportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-		}
-		cat.exportedEnums = nil
-	}
-	if !includedSections["unexported_enums"] {
-		for _, eg := range cat.unexportedEnums {
-			if eg.typeDecl != nil {
-				eg.typeDecl.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, eg.typeDecl)
-			}
-			if eg.constDecl != nil {
-				eg.constDecl.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, eg.constDecl)
-			}
-			for _, m := range eg.exportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-			for _, m := range eg.unexportedMethods {
-				m.Decs.Before = dst.EmptyLine
-				cat.uncategorized = append(cat.uncategorized, m)
-			}
-		}
-		cat.unexportedEnums = nil
-	}
 }
 
 // categorizedDecls holds declarations organized by category.
@@ -574,6 +429,126 @@ func categorizeDeclarations(file *dst.File) *categorizedDecls {
 	sortCategorized(cat)
 
 	return cat
+}
+
+// collectUncategorized moves declarations from excluded sections to uncategorized.
+func collectUncategorized(cat *categorizedDecls, includedSections map[string]bool) {
+	if !includedSections["exported_consts"] && len(cat.exportedConsts) > 0 {
+		cat.uncategorized = append(cat.uncategorized, mergeConstSpecs(cat.exportedConsts, "Exported constants."))
+		cat.exportedConsts = nil
+	}
+	if !includedSections["exported_vars"] && len(cat.exportedVars) > 0 {
+		cat.uncategorized = append(cat.uncategorized, mergeVarSpecs(cat.exportedVars, "Exported variables."))
+		cat.exportedVars = nil
+	}
+	if !includedSections["exported_funcs"] {
+		for _, fn := range cat.exportedFuncs {
+			fn.Decs.Before = dst.EmptyLine
+			cat.uncategorized = append(cat.uncategorized, fn)
+		}
+		cat.exportedFuncs = nil
+	}
+	if !includedSections["unexported_consts"] && len(cat.unexportedConsts) > 0 {
+		cat.uncategorized = append(cat.uncategorized, mergeConstSpecs(cat.unexportedConsts, "unexported constants."))
+		cat.unexportedConsts = nil
+	}
+	if !includedSections["unexported_vars"] && len(cat.unexportedVars) > 0 {
+		cat.uncategorized = append(cat.uncategorized, mergeVarSpecs(cat.unexportedVars, "unexported variables."))
+		cat.unexportedVars = nil
+	}
+	if !includedSections["unexported_funcs"] {
+		for _, fn := range cat.unexportedFuncs {
+			fn.Decs.Before = dst.EmptyLine
+			cat.uncategorized = append(cat.uncategorized, fn)
+		}
+		cat.unexportedFuncs = nil
+	}
+	// Handle types (includes type decl, constructors, methods)
+	if !includedSections["exported_types"] {
+		for _, tg := range cat.exportedTypes {
+			if tg.typeDecl != nil {
+				tg.typeDecl.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, tg.typeDecl)
+			}
+			for _, ctor := range tg.constructors {
+				ctor.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, ctor)
+			}
+			for _, m := range tg.exportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+			for _, m := range tg.unexportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+		}
+		cat.exportedTypes = nil
+	}
+	if !includedSections["unexported_types"] {
+		for _, tg := range cat.unexportedTypes {
+			if tg.typeDecl != nil {
+				tg.typeDecl.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, tg.typeDecl)
+			}
+			for _, ctor := range tg.constructors {
+				ctor.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, ctor)
+			}
+			for _, m := range tg.exportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+			for _, m := range tg.unexportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+		}
+		cat.unexportedTypes = nil
+	}
+	// Handle enums (includes type decl, iota const, methods)
+	if !includedSections["exported_enums"] {
+		for _, eg := range cat.exportedEnums {
+			if eg.typeDecl != nil {
+				eg.typeDecl.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, eg.typeDecl)
+			}
+			if eg.constDecl != nil {
+				eg.constDecl.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, eg.constDecl)
+			}
+			for _, m := range eg.exportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+			for _, m := range eg.unexportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+		}
+		cat.exportedEnums = nil
+	}
+	if !includedSections["unexported_enums"] {
+		for _, eg := range cat.unexportedEnums {
+			if eg.typeDecl != nil {
+				eg.typeDecl.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, eg.typeDecl)
+			}
+			if eg.constDecl != nil {
+				eg.constDecl.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, eg.constDecl)
+			}
+			for _, m := range eg.exportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+			for _, m := range eg.unexportedMethods {
+				m.Decs.Before = dst.EmptyLine
+				cat.uncategorized = append(cat.uncategorized, m)
+			}
+		}
+		cat.unexportedEnums = nil
+	}
 }
 
 // containsIota checks if an expression contains iota.
@@ -942,6 +917,31 @@ func reassembleDeclarations(cat *categorizedDecls) []dst.Decl {
 	for _, fn := range cat.unexportedFuncs {
 		fn.Decs.Before = dst.EmptyLine
 		decls = append(decls, fn)
+	}
+
+	return decls
+}
+
+// reassembleDeclarationsWithConfig builds the ordered declaration list using config.
+func reassembleDeclarationsWithConfig(cat *categorizedDecls, cfg *Config) []dst.Decl {
+	// Build set of sections in config
+	configSections := make(map[string]bool)
+	for _, s := range cfg.Sections.Order {
+		configSections[s] = true
+	}
+
+	// Collect uncategorized from sections not in config (if mode allows)
+	if cfg.Behavior.Mode != "drop" {
+		collectUncategorized(cat, configSections)
+	}
+
+	decls := make([]dst.Decl, 0)
+
+	for _, section := range cfg.Sections.Order {
+		emitter := getEmitter(section)
+		if emitter != nil {
+			decls = append(decls, emitter(cat, cfg)...)
+		}
 	}
 
 	return decls

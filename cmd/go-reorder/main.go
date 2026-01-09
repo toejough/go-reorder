@@ -14,6 +14,10 @@ import (
 	"github.com/toejough/targ"
 )
 
+func main() {
+	targ.Run(CLI{})
+}
+
 // CLI represents the go-reorder command.
 type CLI struct {
 	Write   bool     `targ:"flag,short=w,desc=Write result to source file instead of stdout"`
@@ -24,17 +28,6 @@ type CLI struct {
 	Exclude []string `targ:"flag,name=exclude,desc=Exclude files matching pattern (can be repeated)"`
 	Path    string   `targ:"positional,placeholder=PATH,desc=File or directory to process"`
 }
-
-// testContext holds test injection - separate from CLI to avoid targ's zero-value check.
-type testContext struct {
-	stdin    io.Reader
-	stdout   io.Writer
-	stderr   io.Writer
-	exitCode int
-}
-
-// testCtx is set during tests to inject IO streams.
-var testCtx *testContext
 
 // Reorder Go source files.
 // Reorders declarations in Go files according to a configurable order.
@@ -78,8 +71,74 @@ func (c *CLI) Run() error {
 	return nil
 }
 
-func main() {
-	targ.Run(CLI{})
+// unexported variables.
+var (
+	testCtx *testContext
+)
+
+type cliOptions struct {
+	write   bool
+	check   bool
+	diff    bool
+	config  string
+	mode    string
+	exclude []string
+}
+
+// testContext holds test injection - separate from CLI to avoid targ's zero-value check.
+type testContext struct {
+	stdin    io.Reader
+	stdout   io.Writer
+	stderr   io.Writer
+	exitCode int
+}
+
+func discoverFiles(paths []string, excludePatterns []string) ([]string, error) {
+	var files []string
+
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil {
+			return nil, err
+		}
+
+		if !info.IsDir() {
+			// Single file
+			if strings.HasSuffix(p, ".go") {
+				if !isExcluded(p, excludePatterns) {
+					files = append(files, p)
+				}
+			}
+			continue
+		}
+
+		// Directory: walk recursively
+		baseDir := p
+		err = filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if strings.HasSuffix(path, ".go") {
+				// Get relative path for pattern matching
+				relPath, err := filepath.Rel(baseDir, path)
+				if err != nil {
+					relPath = path
+				}
+				if !isExcluded(relPath, excludePatterns) {
+					files = append(files, path)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return files, nil
 }
 
 // executeCLI is the testable entry point using targ.Execute.
@@ -93,6 +152,118 @@ func executeCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	_, _ = targ.Execute(append([]string{"go-reorder"}, args...), CLI{})
 	return testCtx.exitCode
+}
+
+// isExcluded checks if a path matches any of the exclude patterns.
+func isExcluded(path string, patterns []string) bool {
+	for _, pattern := range patterns {
+		matched, err := doublestar.Match(pattern, path)
+		if err == nil && matched {
+			return true
+		}
+		// Also check the base name for patterns like "*_test.go"
+		if matched, err := doublestar.Match(pattern, filepath.Base(path)); err == nil && matched {
+			return true
+		}
+	}
+	return false
+}
+
+func processFile(path string, cfg *reorder.Config, opts cliOptions, stdout, stderr io.Writer) (bool, error) {
+	// Read file
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+
+	// Reorder
+	result, err := reorder.SourceWithConfig(string(content), cfg)
+	if err != nil {
+		return false, err
+	}
+
+	// Check if changed
+	changed := result != string(content)
+
+	// Handle output based on flags
+	if opts.check {
+		// Just check, don't output anything
+		return changed, nil
+	}
+
+	if opts.diff {
+		if changed {
+			diff := difflib.UnifiedDiff{
+				A:        difflib.SplitLines(string(content)),
+				B:        difflib.SplitLines(result),
+				FromFile: path,
+				ToFile:   path,
+				Context:  3,
+			}
+			text, err := difflib.GetUnifiedDiffString(diff)
+			if err != nil {
+				return false, err
+			}
+			_, _ = fmt.Fprint(stdout, text)
+		}
+		return changed, nil
+	}
+
+	if opts.write {
+		_, _ = fmt.Fprintf(stderr, "%s\n", path)
+		if changed {
+			if err := os.WriteFile(path, []byte(result), 0644); err != nil {
+				return false, err
+			}
+		}
+		return changed, nil
+	}
+
+	// Default: output to stdout
+	_, _ = fmt.Fprint(stdout, result)
+	return changed, nil
+}
+
+// processStdin handles reading from stdin and writing to stdout.
+func processStdin(stdin io.Reader, opts cliOptions, stdout, stderr io.Writer) int {
+	// Read all from stdin
+	content, err := io.ReadAll(stdin)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error reading stdin: %v\n", err)
+		return 1
+	}
+
+	// Load config
+	var cfg *reorder.Config
+	if opts.config != "" {
+		if _, err := os.Stat(opts.config); os.IsNotExist(err) {
+			_, _ = fmt.Fprintf(stderr, "Error: config file not found: %s\n", opts.config)
+			return 1
+		}
+		cfg, err = reorder.LoadConfig(opts.config)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "Error loading config: %v\n", err)
+			return 1
+		}
+	} else {
+		cfg = reorder.DefaultConfig()
+	}
+
+	// Override mode if specified via flag
+	if opts.mode != "" {
+		cfg.Behavior.Mode = opts.mode
+	}
+
+	// Reorder
+	result, err := reorder.SourceWithConfig(string(content), cfg)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+
+	// Output to stdout
+	_, _ = fmt.Fprint(stdout, result)
+	return 0
 }
 
 // run is the core logic, taking already-parsed options.
@@ -175,174 +346,4 @@ func run(opts cliOptions, files []string, stdin io.Reader, stdout, stderr io.Wri
 	}
 
 	return 0
-}
-
-type cliOptions struct {
-	write   bool
-	check   bool
-	diff    bool
-	config  string
-	mode    string
-	exclude []string
-}
-
-
-func discoverFiles(paths []string, excludePatterns []string) ([]string, error) {
-	var files []string
-
-	for _, p := range paths {
-		info, err := os.Stat(p)
-		if err != nil {
-			return nil, err
-		}
-
-		if !info.IsDir() {
-			// Single file
-			if strings.HasSuffix(p, ".go") {
-				if !isExcluded(p, excludePatterns) {
-					files = append(files, p)
-				}
-			}
-			continue
-		}
-
-		// Directory: walk recursively
-		baseDir := p
-		err = filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				return nil
-			}
-			if strings.HasSuffix(path, ".go") {
-				// Get relative path for pattern matching
-				relPath, err := filepath.Rel(baseDir, path)
-				if err != nil {
-					relPath = path
-				}
-				if !isExcluded(relPath, excludePatterns) {
-					files = append(files, path)
-				}
-			}
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return files, nil
-}
-
-// isExcluded checks if a path matches any of the exclude patterns.
-func isExcluded(path string, patterns []string) bool {
-	for _, pattern := range patterns {
-		matched, err := doublestar.Match(pattern, path)
-		if err == nil && matched {
-			return true
-		}
-		// Also check the base name for patterns like "*_test.go"
-		if matched, err := doublestar.Match(pattern, filepath.Base(path)); err == nil && matched {
-			return true
-		}
-	}
-	return false
-}
-
-// processStdin handles reading from stdin and writing to stdout.
-func processStdin(stdin io.Reader, opts cliOptions, stdout, stderr io.Writer) int {
-	// Read all from stdin
-	content, err := io.ReadAll(stdin)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error reading stdin: %v\n", err)
-		return 1
-	}
-
-	// Load config
-	var cfg *reorder.Config
-	if opts.config != "" {
-		if _, err := os.Stat(opts.config); os.IsNotExist(err) {
-			_, _ = fmt.Fprintf(stderr, "Error: config file not found: %s\n", opts.config)
-			return 1
-		}
-		cfg, err = reorder.LoadConfig(opts.config)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "Error loading config: %v\n", err)
-			return 1
-		}
-	} else {
-		cfg = reorder.DefaultConfig()
-	}
-
-	// Override mode if specified via flag
-	if opts.mode != "" {
-		cfg.Behavior.Mode = opts.mode
-	}
-
-	// Reorder
-	result, err := reorder.SourceWithConfig(string(content), cfg)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		return 1
-	}
-
-	// Output to stdout
-	_, _ = fmt.Fprint(stdout, result)
-	return 0
-}
-
-func processFile(path string, cfg *reorder.Config, opts cliOptions, stdout, stderr io.Writer) (bool, error) {
-	// Read file
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return false, err
-	}
-
-	// Reorder
-	result, err := reorder.SourceWithConfig(string(content), cfg)
-	if err != nil {
-		return false, err
-	}
-
-	// Check if changed
-	changed := result != string(content)
-
-	// Handle output based on flags
-	if opts.check {
-		// Just check, don't output anything
-		return changed, nil
-	}
-
-	if opts.diff {
-		if changed {
-			diff := difflib.UnifiedDiff{
-				A:        difflib.SplitLines(string(content)),
-				B:        difflib.SplitLines(result),
-				FromFile: path,
-				ToFile:   path,
-				Context:  3,
-			}
-			text, err := difflib.GetUnifiedDiffString(diff)
-			if err != nil {
-				return false, err
-			}
-			_, _ = fmt.Fprint(stdout, text)
-		}
-		return changed, nil
-	}
-
-	if opts.write {
-		_, _ = fmt.Fprintf(stderr, "%s\n", path)
-		if changed {
-			if err := os.WriteFile(path, []byte(result), 0644); err != nil {
-				return false, err
-			}
-		}
-		return changed, nil
-	}
-
-	// Default: output to stdout
-	_, _ = fmt.Fprint(stdout, result)
-	return changed, nil
 }
