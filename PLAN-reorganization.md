@@ -4,7 +4,7 @@
 
 | Phase | Status | Commits |
 |-------|--------|---------|
-| 1. Extract internal/ast | Not started | |
+| 1. Extract internal/ast | Complete | test(ast), feat(ast) |
 | 2. Extract internal/categorize | Not started | |
 | 3. Extract internal/emit | Not started | |
 | 4. Extract internal/reassemble | Not started | |
@@ -12,7 +12,7 @@
 | 6. Split CLI into files | Not started | |
 | 7. Clean up demos and docs | Not started | |
 
-**Current**: Starting Phase 1
+**Current**: Phase 1 complete, ready for review before Phase 2
 
 ---
 
