@@ -19,7 +19,11 @@
       "Bash(git commit:*)",
       "Bash(mkdir:*)",
       "Bash(/tmp/go-reorder:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(go vet:*)",
+      "Bash(wc:*)",
+      "Bash(terminal-notifier:*)",
+      "Bash(git restore:*)"
     ]
   }
 }
