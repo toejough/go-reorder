@@ -7,12 +7,12 @@
 | 1. Extract internal/ast | Complete | test(ast), feat(ast) |
 | 2. Extract internal/categorize | Complete | test(categorize), feat(categorize) |
 | 3. Extract internal/emit | Complete | test(emit), feat(emit) |
-| 4. Extract internal/reassemble | Not started | |
+| 4. Extract internal/reassemble | Complete | test(reassemble), feat(reassemble) |
 | 5. Clean up root package | Not started | |
 | 6. Split CLI into files | Not started | |
 | 7. Clean up demos and docs | Not started | |
 
-**Current**: Phase 3 complete, ready for review before Phase 4
+**Current**: Phase 4 complete, ready for review before Phase 5
 
 ---
 
