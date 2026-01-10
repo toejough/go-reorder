@@ -182,7 +182,7 @@ func run(opts cliOptions, files []string, stdin io.Reader, stdout, stderr io.Wri
 	}
 
 	// Process each file
-	hasChanges := false
+	var changedFiles []string
 	for _, f := range goFiles {
 		changed, err := processFile(f, cfg, opts, stdout, stderr)
 		if err != nil {
@@ -190,12 +190,15 @@ func run(opts cliOptions, files []string, stdin io.Reader, stdout, stderr io.Wri
 			return 1
 		}
 		if changed {
-			hasChanges = true
+			changedFiles = append(changedFiles, f)
 		}
 	}
 
 	// --check mode: exit 1 if any files would change
-	if opts.check && hasChanges {
+	if opts.check && len(changedFiles) > 0 {
+		for _, f := range changedFiles {
+			_, _ = fmt.Fprintf(stderr, "%s\n", f)
+		}
 		return 1
 	}
 

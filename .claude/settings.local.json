@@ -25,7 +25,9 @@
       "Bash(terminal-notifier:*)",
       "Bash(git restore:*)",
       "Bash(ls:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(git revert:*)",
+      "Bash(git reset:*)"
     ]
   }
 }
