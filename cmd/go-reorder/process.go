@@ -14,9 +14,10 @@ import (
 
 // checkResult holds information about a file that needs reordering.
 type checkResult struct {
-	path     string
-	found    []string // section names in current order
-	expected []string // section names in expected order
+	path          string
+	found         []string // section names in current order
+	expected      []string // section names in expected order
+	sectionsMatch bool     // true if sections are in order but within-section changes needed
 }
 
 // analyzeFile checks if a file needs reordering and returns details about the ordering.
@@ -60,10 +61,14 @@ func analyzeFile(path string, cfg *reorder.Config) (*checkResult, error) {
 		expected = append(expected, s.Name)
 	}
 
+	// Check if sections are in the same order
+	sectionsMatch := slices.Equal(found, expected)
+
 	return &checkResult{
-		path:     path,
-		found:    found,
-		expected: expected,
+		path:          path,
+		found:         found,
+		expected:      expected,
+		sectionsMatch: sectionsMatch,
 	}, nil
 }
 
@@ -264,8 +269,13 @@ func run(opts cliOptions, files []string, stdin io.Reader, stdout, stderr io.Wri
 			// Print each file's ordering issues
 			for _, r := range results {
 				_, _ = fmt.Fprintf(stderr, "%s\n", r.path)
-				_, _ = fmt.Fprintf(stderr, "  found:    %s\n", strings.Join(r.found, " -> "))
-				_, _ = fmt.Fprintf(stderr, "  expected: %s\n", strings.Join(r.expected, " -> "))
+				if r.sectionsMatch {
+					_, _ = fmt.Fprintf(stderr, "  sections: %s\n", strings.Join(r.found, " -> "))
+					_, _ = fmt.Fprintf(stderr, "  issue:    within-section reordering needed (e.g., alphabetizing, type grouping)\n")
+				} else {
+					_, _ = fmt.Fprintf(stderr, "  found:    %s\n", strings.Join(r.found, " -> "))
+					_, _ = fmt.Fprintf(stderr, "  expected: %s\n", strings.Join(r.expected, " -> "))
+				}
 				_, _ = fmt.Fprintf(stderr, "\n")
 			}
 			return 1
