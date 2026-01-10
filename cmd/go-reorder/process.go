@@ -5,10 +5,67 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/toejough/go-reorder"
 )
+
+// checkResult holds information about a file that needs reordering.
+type checkResult struct {
+	path     string
+	found    []string // section names in current order
+	expected []string // section names in expected order
+}
+
+// analyzeFile checks if a file needs reordering and returns details about the ordering.
+func analyzeFile(path string, cfg *reorder.Config) (*checkResult, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if reordering would change the file
+	result, err := reorder.SourceWithConfig(string(content), cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	if result == string(content) {
+		return nil, nil // No changes needed
+	}
+
+	// Analyze current section order
+	order, err := reorder.AnalyzeSectionOrder(string(content))
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract found order (current positions)
+	found := make([]string, 0, len(order.Sections))
+	for _, s := range order.Sections {
+		found = append(found, s.Name)
+	}
+
+	// Sort by expected position to get expected order
+	expectedSections := make([]reorder.Section, len(order.Sections))
+	copy(expectedSections, order.Sections)
+	slices.SortFunc(expectedSections, func(a, b reorder.Section) int {
+		return a.Expected - b.Expected
+	})
+
+	expected := make([]string, 0, len(expectedSections))
+	for _, s := range expectedSections {
+		expected = append(expected, s.Name)
+	}
+
+	return &checkResult{
+		path:     path,
+		found:    found,
+		expected: expected,
+	}, nil
+}
 
 func processFile(path string, cfg *reorder.Config, opts cliOptions, stdout, stderr io.Writer) (bool, error) {
 	// Read file
@@ -181,25 +238,48 @@ func run(opts cliOptions, files []string, stdin io.Reader, stdout, stderr io.Wri
 		_, _ = fmt.Fprintf(stderr, "files: %d\n", len(goFiles))
 	}
 
-	// Process each file
-	var changedFiles []string
+	// Check mode: analyze and report ordering issues
+	if opts.check {
+		var results []*checkResult
+		for _, f := range goFiles {
+			result, err := analyzeFile(f, cfg)
+			if err != nil {
+				_, _ = fmt.Fprintf(stderr, "Error analyzing %s: %v\n", f, err)
+				return 1
+			}
+			if result != nil {
+				results = append(results, result)
+			}
+		}
+
+		if len(results) > 0 {
+			// Print config info
+			if configPath != "" {
+				_, _ = fmt.Fprintf(stderr, "config: %s\n", configPath)
+			} else {
+				_, _ = fmt.Fprintf(stderr, "config: using defaults\n")
+			}
+			_, _ = fmt.Fprintf(stderr, "\n")
+
+			// Print each file's ordering issues
+			for _, r := range results {
+				_, _ = fmt.Fprintf(stderr, "%s\n", r.path)
+				_, _ = fmt.Fprintf(stderr, "  found:    %s\n", strings.Join(r.found, " -> "))
+				_, _ = fmt.Fprintf(stderr, "  expected: %s\n", strings.Join(r.expected, " -> "))
+				_, _ = fmt.Fprintf(stderr, "\n")
+			}
+			return 1
+		}
+		return 0
+	}
+
+	// Process each file (non-check mode)
 	for _, f := range goFiles {
-		changed, err := processFile(f, cfg, opts, stdout, stderr)
+		_, err := processFile(f, cfg, opts, stdout, stderr)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "Error processing %s: %v\n", f, err)
 			return 1
 		}
-		if changed {
-			changedFiles = append(changedFiles, f)
-		}
-	}
-
-	// --check mode: exit 1 if any files would change
-	if opts.check && len(changedFiles) > 0 {
-		for _, f := range changedFiles {
-			_, _ = fmt.Fprintf(stderr, "%s\n", f)
-		}
-		return 1
 	}
 
 	return 0
