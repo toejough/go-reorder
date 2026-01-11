@@ -1236,3 +1236,74 @@ func 123InvalidName() {}
 		t.Errorf("Error message should include line number, got: %s", errMsg)
 	}
 }
+
+func TestStrictModeError(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+const Version = "1.0"
+
+func Helper() {}
+`
+
+	// Config that doesn't include exported_consts or exported_funcs
+	cfg := &reorder.Config{
+		Sections: reorder.SectionsConfig{
+			Order: []string{"imports", "main"},
+		},
+		Types: reorder.TypesConfig{
+			TypeLayout: []string{"typedef", "constructors", "exported_methods", "unexported_methods"},
+			EnumLayout: []string{"typedef", "iota", "exported_methods", "unexported_methods"},
+		},
+		Behavior: reorder.BehaviorConfig{
+			Mode: "strict",
+		},
+	}
+
+	_, err := reorder.SourceWithConfig(input, cfg)
+	if err == nil {
+		t.Fatal("Expected strict mode error")
+	}
+
+	errMsg := err.Error()
+
+	// Should mention the excluded sections
+	if !hasSubstring(errMsg, "exported_consts") {
+		t.Errorf("Error should mention exported_consts, got: %s", errMsg)
+	}
+	if !hasSubstring(errMsg, "exported_funcs") {
+		t.Errorf("Error should mention exported_funcs, got: %s", errMsg)
+	}
+
+	// Should include hints
+	if !hasSubstring(errMsg, "Hints:") {
+		t.Errorf("Error should include hints, got: %s", errMsg)
+	}
+	if !hasSubstring(errMsg, "uncategorized") {
+		t.Errorf("Error should suggest uncategorized, got: %s", errMsg)
+	}
+	if !hasSubstring(errMsg, "--mode=append") {
+		t.Errorf("Error should suggest --mode=append, got: %s", errMsg)
+	}
+}
+
+func TestStrictModeNoErrorWhenConfigComplete(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+const Version = "1.0"
+
+func Helper() {}
+`
+
+	// Config that includes all needed sections
+	cfg := reorder.DefaultConfig()
+	cfg.Behavior.Mode = "strict"
+
+	_, err := reorder.SourceWithConfig(input, cfg)
+	if err != nil {
+		t.Fatalf("Should not error when config is complete: %v", err)
+	}
+}

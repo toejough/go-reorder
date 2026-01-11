@@ -613,6 +613,54 @@ func CollectUncategorized(cat *CategorizedDecls, includedSections map[string]boo
 	}
 }
 
+// FindExcludedSections returns the names of sections that have content
+// but are not in the includedSections map.
+func FindExcludedSections(cat *CategorizedDecls, includedSections map[string]bool) []string {
+	var excluded []string
+
+	if !includedSections["main"] && cat.Main != nil {
+		excluded = append(excluded, "main")
+	}
+	if !includedSections["init"] && len(cat.Init) > 0 {
+		excluded = append(excluded, "init")
+	}
+	if !includedSections["exported_consts"] && len(cat.ExportedConsts) > 0 {
+		excluded = append(excluded, "exported_consts")
+	}
+	if !includedSections["exported_vars"] && len(cat.ExportedVars) > 0 {
+		excluded = append(excluded, "exported_vars")
+	}
+	if !includedSections["exported_funcs"] && len(cat.ExportedFuncs) > 0 {
+		excluded = append(excluded, "exported_funcs")
+	}
+	if !includedSections["exported_types"] && len(cat.ExportedTypes) > 0 {
+		excluded = append(excluded, "exported_types")
+	}
+	if !includedSections["exported_enums"] && len(cat.ExportedEnums) > 0 {
+		excluded = append(excluded, "exported_enums")
+	}
+	if !includedSections["unexported_consts"] && len(cat.UnexportedConsts) > 0 {
+		excluded = append(excluded, "unexported_consts")
+	}
+	if !includedSections["unexported_vars"] && len(cat.UnexportedVars) > 0 {
+		excluded = append(excluded, "unexported_vars")
+	}
+	if !includedSections["unexported_funcs"] && len(cat.UnexportedFuncs) > 0 {
+		excluded = append(excluded, "unexported_funcs")
+	}
+	if !includedSections["unexported_types"] && len(cat.UnexportedTypes) > 0 {
+		excluded = append(excluded, "unexported_types")
+	}
+	if !includedSections["unexported_enums"] && len(cat.UnexportedEnums) > 0 {
+		excluded = append(excluded, "unexported_enums")
+	}
+	if !includedSections["uncategorized"] && len(cat.Uncategorized) > 0 {
+		excluded = append(excluded, "uncategorized")
+	}
+
+	return excluded
+}
+
 // MergeConstSpecs creates a single const block from multiple specs.
 func MergeConstSpecs(specs []*dst.ValueSpec, comment string) *dst.GenDecl {
 	dstSpecs := make([]dst.Spec, 0, len(specs))

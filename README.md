@@ -201,6 +201,35 @@ func ReorderCheck() error {
 }
 ```
 
+### VSCode
+
+Add to `.vscode/tasks.json`:
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "go-reorder: fix",
+      "type": "shell",
+      "command": "go-reorder",
+      "args": ["-w", "${file}"],
+      "problemMatcher": [],
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "go-reorder: check all",
+      "type": "shell",
+      "command": "go-reorder",
+      "args": ["-c", "./..."],
+      "problemMatcher": []
+    }
+  ]
+}
+```
+
+Run with `Ctrl+Shift+P` → "Tasks: Run Task" → select task.
+
 ## Configuration
 
 ### Config Discovery
@@ -362,6 +391,40 @@ cfg.Behavior.Mode = "append"
 
 // Reorder with config
 reordered, err := reorder.SourceWithConfig(string(content), cfg)
+```
+
+### AST-Level Usage
+
+For advanced use cases, work directly with parsed AST files using [dave/dst](https://github.com/dave/dst):
+
+```go
+import (
+    "go/token"
+    "github.com/dave/dst/decorator"
+    "github.com/toejough/go-reorder"
+)
+
+// Parse source to DST
+dec := decorator.NewDecorator(token.NewFileSet())
+file, err := dec.Parse(sourceCode)
+if err != nil {
+    panic(err)
+}
+
+// Reorder in place
+err = reorder.File(file)  // or FileWithConfig(file, cfg)
+if err != nil {
+    panic(err)
+}
+
+// Modify the AST further if needed
+// ...
+
+// Print back to source
+res := decorator.NewRestorer()
+var buf bytes.Buffer
+res.Fprint(&buf, file)
+result := buf.String()
 ```
 
 ### API Functions

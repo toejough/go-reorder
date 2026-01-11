@@ -50,7 +50,7 @@ Goal: Make go-reorder maximally discoverable and useful for humans and AIs.
 ### 2.5 Integration Section
 - [x] Pre-commit hook setup
 - [x] GitHub Actions setup
-- [ ] VSCode tasks.json example
+- [x] VSCode tasks.json example
 - [x] Makefile example
 
 ### 2.6 Troubleshooting Section
@@ -77,8 +77,8 @@ Goal: Make go-reorder maximally discoverable and useful for humans and AIs.
 - [x] Useful for config authoring
 
 ### 3.3 Improved Error Messages
-- [ ] Add hints to strict mode errors
-- [ ] Suggest how to fix common issues
+- [x] Add hints to strict mode errors
+- [x] Suggest how to fix common issues
 
 ---
 
@@ -93,7 +93,7 @@ Goal: Make go-reorder maximally discoverable and useful for humans and AIs.
 ### 4.2 Library Usage Examples
 - [x] Add example in README for programmatic use
 - [x] Show custom config creation
-- [ ] Show AST-level usage with File()
+- [x] Show AST-level usage with File()
 
 ---
 
@@ -118,6 +118,9 @@ Goal: Make go-reorder maximally discoverable and useful for humans and AIs.
 - Phase 4: Added package-level documentation with examples
 - Phase 5: Created CLAUDE.md for AI discoverability
 - Phase 5: Created examples/ directory with webapp, cli-tool, minimal configs
+- Phase 2.5: Added VSCode tasks.json example to README
+- Phase 3.3: Implemented strict mode errors with helpful hints
+- Phase 4.2: Added AST-level File() usage documentation
 
 ### 2026-01-10
 - Created this plan document

@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"go/token"
 	"slices"
+	"strings"
 
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
@@ -51,6 +52,25 @@ import (
 	"github.com/toejough/go-reorder/internal/categorize"
 	"github.com/toejough/go-reorder/internal/reassemble"
 )
+
+// StrictModeError is returned when mode is "strict" and code has no matching section.
+type StrictModeError struct {
+	ExcludedSections []string
+}
+
+// Error returns a helpful error message with hints for fixing the issue.
+func (e *StrictModeError) Error() string {
+	sections := strings.Join(e.ExcludedSections, ", ")
+	return fmt.Sprintf(
+		"strict mode: code has no matching section for: %s\n"+
+			"Hints:\n"+
+			"  - Add the missing section(s) to your config's [sections] order array\n"+
+			"  - Add \"uncategorized\" to catch any unmatched code\n"+
+			"  - Use --mode=append to be lenient (append unmatched code at end)\n"+
+			"  - Use --mode=warn to append with a warning",
+		sections,
+	)
+}
 
 // Section represents a declaration section in a Go file.
 type Section struct {
@@ -138,8 +158,23 @@ func File(file *dst.File) error {
 }
 
 // FileWithConfig reorders declarations in a dst.File using the provided configuration.
+// Returns an error in strict mode if code has no matching section in the config.
 func FileWithConfig(file *dst.File, cfg *Config) error {
 	cat := categorize.CategorizeDeclarations(file)
+
+	// Build section set for checking
+	configSections := make(map[string]bool)
+	for _, s := range cfg.Sections.Order {
+		configSections[s] = true
+	}
+
+	// In strict mode, check for excluded sections before processing
+	if cfg.Behavior.Mode == "strict" {
+		excluded := categorize.FindExcludedSections(cat, configSections)
+		if len(excluded) > 0 {
+			return &StrictModeError{ExcludedSections: excluded}
+		}
+	}
 
 	reassembleCfg := &reassemble.Config{
 		Order:      cfg.Sections.Order,
