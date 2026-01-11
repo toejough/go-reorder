@@ -559,3 +559,103 @@ const Version = "1.0"
 		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
 	}
 }
+
+func TestCLIListSections(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exitCode := executeCLI([]string{"--list-sections"}, nil, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
+	}
+
+	output := stdout.String()
+
+	// Should list all available sections
+	expectedSections := []string{
+		"imports", "main", "init",
+		"exported_consts", "exported_enums", "exported_vars",
+		"exported_types", "exported_funcs",
+		"unexported_consts", "unexported_enums", "unexported_vars",
+		"unexported_types", "unexported_funcs",
+		"uncategorized",
+	}
+
+	for _, section := range expectedSections {
+		if !strings.Contains(output, section) {
+			t.Errorf("expected output to contain section %q, got: %s", section, output)
+		}
+	}
+}
+
+func TestCLIInitCreatesConfig(t *testing.T) {
+	// Change to temp directory for this test
+	tmpDir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+
+	var stdout, stderr bytes.Buffer
+	exitCode := executeCLI([]string{"--init"}, nil, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d; stderr: %s", exitCode, stderr.String())
+	}
+
+	// Should have created .go-reorder.toml
+	configPath := filepath.Join(tmpDir, ".go-reorder.toml")
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		t.Error("expected .go-reorder.toml to be created")
+	}
+
+	// Should contain key config sections
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+
+	contentStr := string(content)
+	if !strings.Contains(contentStr, "[sections]") {
+		t.Error("expected config to contain [sections]")
+	}
+	if !strings.Contains(contentStr, "[behavior]") {
+		t.Error("expected config to contain [behavior]")
+	}
+	if !strings.Contains(contentStr, "order = [") {
+		t.Error("expected config to contain order array")
+	}
+}
+
+func TestCLIInitFailsIfExists(t *testing.T) {
+	// Change to temp directory for this test
+	tmpDir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+
+	// Create existing config
+	configPath := filepath.Join(tmpDir, ".go-reorder.toml")
+	if err := os.WriteFile(configPath, []byte("existing"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exitCode := executeCLI([]string{"--init"}, nil, &stdout, &stderr)
+
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1 when config exists, got %d", exitCode)
+	}
+
+	if !strings.Contains(stderr.String(), "already exists") {
+		t.Errorf("expected error about existing file, got: %s", stderr.String())
+	}
+}

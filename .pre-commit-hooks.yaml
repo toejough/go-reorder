@@ -1,0 +1,15 @@
+- id: go-reorder
+  name: go-reorder
+  description: Reorder Go file declarations according to conventions
+  entry: go-reorder -w
+  language: golang
+  types: [go]
+  pass_filenames: true
+
+- id: go-reorder-check
+  name: go-reorder-check
+  description: Check if Go file declarations are properly ordered
+  entry: go-reorder -c
+  language: golang
+  types: [go]
+  pass_filenames: true

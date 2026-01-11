@@ -54,14 +54,38 @@ var (
 )
 
 // BehaviorConfig controls how the reorderer handles edge cases.
+//
+// Mode determines what happens when declarations don't match any section in the config:
+//   - "strict": Return an error (default). Safe for CI.
+//   - "warn":   Append unmatched code at end and print warning to stderr.
+//   - "append": Silently append unmatched code at end.
+//   - "drop":   Discard unmatched code. Useful for extracting specific sections.
 type BehaviorConfig struct {
+	// Mode controls handling of unmatched declarations.
+	// Valid values: "strict", "warn", "append", "drop".
 	Mode string
 }
 
 // Config holds all configuration for go-reorder.
+//
+// Example usage:
+//
+//	cfg := reorder.DefaultConfig()
+//	cfg.Behavior.Mode = "append"
+//	result, err := reorder.SourceWithConfig(src, cfg)
+//
+// Or load from file:
+//
+//	cfg, err := reorder.LoadConfig(".go-reorder.toml")
+//	result, err := reorder.SourceWithConfig(src, cfg)
 type Config struct {
+	// Sections controls the order of declaration groups in the output.
 	Sections SectionsConfig
-	Types    TypesConfig
+
+	// Types controls how types and enums are laid out within their sections.
+	Types TypesConfig
+
+	// Behavior controls error handling for unmatched declarations.
 	Behavior BehaviorConfig
 }
 
@@ -111,13 +135,51 @@ func (c *Config) Validate() error {
 }
 
 // SectionsConfig controls declaration ordering.
+//
+// Available section names:
+//   - "imports":           Import declarations
+//   - "main":              The main() function
+//   - "init":              All init() functions (original order preserved)
+//   - "exported_consts":   Exported constant declarations
+//   - "exported_enums":    Exported enum types with their iota blocks
+//   - "exported_vars":     Exported variable declarations
+//   - "exported_types":    Exported type definitions (with constructors and methods)
+//   - "exported_funcs":    Exported standalone functions
+//   - "unexported_consts": Unexported constant declarations
+//   - "unexported_enums":  Unexported enum types with their iota blocks
+//   - "unexported_vars":   Unexported variable declarations
+//   - "unexported_types":  Unexported type definitions (with constructors and methods)
+//   - "unexported_funcs":  Unexported standalone functions
+//   - "uncategorized":     Catch-all for anything not matching other sections
 type SectionsConfig struct {
+	// Order lists section names in the desired output order.
+	// Sections not in this list will be handled according to Behavior.Mode.
 	Order []string
 }
 
 // TypesConfig controls how types and enums are laid out internally.
+//
+// TypeLayout elements control type group ordering:
+//   - "typedef":            The type definition itself (type Foo struct{})
+//   - "constructors":       Functions matching New*TypeName (e.g., NewFoo, NewMockFoo)
+//   - "exported_methods":   Exported methods on the type
+//   - "unexported_methods": Unexported methods on the type
+//
+// EnumLayout elements control enum group ordering:
+//   - "typedef":            The enum type definition (type Status int)
+//   - "iota":               The associated iota const block
+//   - "exported_methods":   Exported methods (e.g., String())
+//   - "unexported_methods": Unexported methods
+//
+// Constructor matching: Functions are matched as constructors if they:
+//   - Are named New + TypeName (e.g., NewUser for type User)
+//   - Are named New + Prefix + TypeName (e.g., NewMockUser for type User)
+//   - Return *TypeName or TypeName as first return value
 type TypesConfig struct {
+	// TypeLayout orders elements within each type group.
 	TypeLayout []string
+
+	// EnumLayout orders elements within each enum group.
 	EnumLayout []string
 }
 

@@ -1,0 +1,30 @@
+# Example GitHub Actions workflow for go-reorder
+# Copy this to your project as .github/workflows/reorder-check.yml
+#
+# This workflow checks that Go files are properly ordered according to
+# your project's conventions.
+
+name: Check Declaration Order
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  reorder-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install go-reorder
+        run: go install github.com/toejough/go-reorder/cmd/go-reorder@latest
+
+      - name: Check declaration order
+        run: go-reorder -c ./...

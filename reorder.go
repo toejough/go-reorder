@@ -1,3 +1,42 @@
+// Package reorder provides tools for reorganizing Go source code declarations.
+//
+// The package reorders declarations in Go files according to configurable conventions,
+// grouping related code together (types with their methods and constructors) and
+// organizing sections in a consistent order.
+//
+// # Basic Usage
+//
+// The simplest way to reorder code is with default settings:
+//
+//	result, err := reorder.Source(srcCode)
+//
+// # Custom Configuration
+//
+// For custom ordering, load or create a config:
+//
+//	cfg, err := reorder.LoadConfig(".go-reorder.toml")
+//	result, err := reorder.SourceWithConfig(srcCode, cfg)
+//
+// Or modify the default config:
+//
+//	cfg := reorder.DefaultConfig()
+//	cfg.Sections.Order = []string{"imports", "exported_types", "unexported_types"}
+//	cfg.Behavior.Mode = "append"
+//	result, err := reorder.SourceWithConfig(srcCode, cfg)
+//
+// # Section Ordering
+//
+// Declarations are organized into sections: imports, main, init, exported/unexported
+// consts/enums/vars/types/funcs, and uncategorized. The order of these sections
+// is configurable.
+//
+// # Type Grouping
+//
+// Types are automatically grouped with:
+//   - Constructors: Functions named New*TypeName (e.g., NewUser, NewMockUser)
+//   - Methods: Both exported and unexported methods on the type
+//
+// Enums (types with associated iota const blocks) are similarly grouped.
 package reorder
 
 import (
@@ -115,8 +154,22 @@ func FileWithConfig(file *dst.File, cfg *Config) error {
 	return nil
 }
 
-// Source reorders declarations in Go source code according to project conventions.
+// Source reorders declarations in Go source code according to default conventions.
 // It preserves all comments and handles edge cases like iota blocks and type-method grouping.
+//
+// Default ordering: imports, main, init, exported (consts, enums, vars, types, funcs),
+// then unexported equivalents, then uncategorized.
+//
+// Types are grouped with their constructors (New*TypeName) and methods.
+// Enums (iota types) are grouped with their const blocks.
+//
+// Example:
+//
+//	reordered, err := reorder.Source(srcCode)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Println(reordered)
 func Source(src string) (string, error) {
 	dec := decorator.NewDecorator(token.NewFileSet())
 
@@ -143,6 +196,20 @@ func Source(src string) (string, error) {
 }
 
 // SourceWithConfig reorders declarations using the provided configuration.
+//
+// Example with loaded config:
+//
+//	cfg, err := reorder.LoadConfig(".go-reorder.toml")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	result, err := reorder.SourceWithConfig(src, cfg)
+//
+// Example with modified default config:
+//
+//	cfg := reorder.DefaultConfig()
+//	cfg.Behavior.Mode = "append"  // Don't error on unmatched code
+//	result, err := reorder.SourceWithConfig(src, cfg)
 func SourceWithConfig(src string, cfg *Config) (string, error) {
 	dec := decorator.NewDecorator(token.NewFileSet())
 

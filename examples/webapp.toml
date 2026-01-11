@@ -1,0 +1,24 @@
+# Web Application Configuration
+# Puts handlers (exported funcs) last for easy discovery
+# Models and internal helpers come first
+
+[sections]
+order = [
+  "imports",
+  "exported_consts",       # API constants, status codes
+  "exported_vars",         # Package-level configs
+  "exported_types",        # Models, request/response types
+  "unexported_consts",
+  "unexported_vars",
+  "unexported_types",      # Internal DTOs, helpers
+  "unexported_funcs",      # Internal utilities
+  "exported_funcs",        # HTTP handlers - easy to find at bottom
+  "uncategorized",
+]
+
+[types]
+type_layout = ["typedef", "constructors", "exported_methods", "unexported_methods"]
+enum_layout = ["typedef", "iota", "exported_methods", "unexported_methods"]
+
+[behavior]
+mode = "strict"

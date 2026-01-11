@@ -1,0 +1,16 @@
+# Minimal Configuration
+# Just organizes code without being strict about missing sections
+# Good for legacy codebases or gradual adoption
+
+[sections]
+order = [
+  "imports",
+  "exported_types",
+  "unexported_types",
+  "exported_funcs",
+  "unexported_funcs",
+  "uncategorized",         # Catch-all for everything else
+]
+
+[behavior]
+mode = "append"  # Don't error, just append unmatched code

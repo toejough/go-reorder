@@ -1,0 +1,25 @@
+# CLI Tool Configuration
+# Puts main() at top so entry point is immediately visible
+# Commands and flags follow
+
+[sections]
+order = [
+  "imports",
+  "main",                  # Entry point at top
+  "init",                  # Initialization (flags, etc.)
+  "exported_consts",
+  "exported_types",        # Command structs
+  "exported_funcs",        # Command implementations
+  "unexported_consts",
+  "unexported_vars",
+  "unexported_types",
+  "unexported_funcs",      # Helper functions
+  "uncategorized",
+]
+
+[types]
+type_layout = ["typedef", "constructors", "exported_methods", "unexported_methods"]
+enum_layout = ["typedef", "iota", "exported_methods", "unexported_methods"]
+
+[behavior]
+mode = "strict"
