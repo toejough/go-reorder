@@ -27,7 +27,10 @@
       "Bash(ls:*)",
       "Bash(git rm:*)",
       "Bash(git revert:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(targ reorder-decls-check:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(/tmp/go-reorder-fresh:*)"
     ]
   }
 }

@@ -50,7 +50,7 @@ func Declarations(cat *categorize.CategorizedDecls) []dst.Decl {
 	const extraCapacity = 10 // Extra capacity for main + merged const/var blocks
 
 	// Pre-allocate with estimated capacity
-	estimatedSize := len(cat.Imports) + len(cat.ExportedConsts) + len(cat.ExportedEnums) +
+	estimatedSize := len(cat.Imports) + len(cat.Init) + len(cat.ExportedConsts) + len(cat.ExportedEnums) +
 		len(cat.ExportedVars) + len(cat.ExportedTypes) + len(cat.ExportedFuncs) +
 		len(cat.UnexportedConsts) + len(cat.UnexportedEnums) + len(cat.UnexportedVars) +
 		len(cat.UnexportedTypes) + len(cat.UnexportedFuncs) + extraCapacity
@@ -63,6 +63,12 @@ func Declarations(cat *categorize.CategorizedDecls) []dst.Decl {
 	// main() if present
 	if cat.Main != nil {
 		decls = append(decls, cat.Main)
+	}
+
+	// init() functions (preserve original order)
+	for _, initFn := range cat.Init {
+		initFn.Decs.Before = dst.EmptyLine
+		decls = append(decls, initFn)
 	}
 
 	// Exported constants (merged)
