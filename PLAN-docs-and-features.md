@@ -29,7 +29,7 @@ Goal: Make go-reorder maximally discoverable and useful for humans and AIs.
 
 ### 2.1 Quick Start Section
 - [x] Add 3-command quick start at top of README
-- [ ] Include both CLI and library quick starts
+- [x] Include both CLI and library quick starts
 
 ### 2.2 Before/After Examples
 - [x] Add visual before/after code transformation

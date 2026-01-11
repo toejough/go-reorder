@@ -6,6 +6,8 @@ A Go code reordering tool that organizes declarations according to configurable 
 
 ## Quick Start
 
+### CLI
+
 ```bash
 # Install
 go install github.com/toejough/go-reorder/cmd/go-reorder@latest
@@ -15,6 +17,19 @@ go-reorder -c ./...
 
 # Fix all files in place
 go-reorder -w ./...
+```
+
+### Library
+
+```go
+import "github.com/toejough/go-reorder"
+
+// Reorder source code with default config
+result, err := reorder.Source(sourceCode)
+
+// Or with custom config
+cfg, _ := reorder.LoadConfig(".go-reorder.toml")
+result, err := reorder.SourceWithConfig(sourceCode, cfg)
 ```
 
 ## Before/After Example
