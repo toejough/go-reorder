@@ -99,10 +99,10 @@ Goal: Make go-reorder maximally discoverable and useful for humans and AIs.
 
 ## Phase 5: Polish
 
-### 5.1 CLAUDE.md for AI Discoverability
-- [x] Create CLAUDE.md with tool description
-- [x] Include common usage patterns
-- [x] Document API for AI assistants
+### 5.1 AI/Human Discoverability
+- [x] ~~Create CLAUDE.md~~ (merged into README instead)
+- [x] Include common usage patterns in README
+- [x] Document API for all users
 
 ### 5.2 Examples Directory
 - [x] Create examples/ with sample configs

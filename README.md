@@ -123,6 +123,8 @@ go-reorder -v -w ./...
 | `--config` | | Path to config file |
 | `--mode` | | Behavior mode: `strict`, `warn`, `append`, or `drop` |
 | `--exclude` | | Exclude files matching pattern (can be repeated) |
+| `--init` | | Create a default `.go-reorder.toml` config file |
+| `--list-sections` | | List available section names for config |
 
 ### Check Mode Output
 
@@ -460,6 +462,36 @@ Without a config file, declarations are ordered as:
 14. Uncategorized (catch-all)
 
 Within each section, declarations are sorted alphabetically. Types group their constructors (functions matching `New*TypeName`) and methods together.
+
+## Common Tasks
+
+### Add go-reorder to a project
+
+```bash
+go-reorder --init              # Create config
+go-reorder -d ./...            # Preview changes
+go-reorder -w ./...            # Apply changes
+```
+
+### Check ordering in CI
+
+```bash
+go-reorder -c ./...            # Exit 1 if changes needed
+```
+
+### Customize ordering for web app (handlers last)
+
+```toml
+[sections]
+order = [
+  "imports",
+  "exported_types",      # Models first
+  "unexported_types",
+  "unexported_funcs",
+  "exported_funcs",      # Handlers last
+  "uncategorized",
+]
+```
 
 ## What This Tool Doesn't Do
 
