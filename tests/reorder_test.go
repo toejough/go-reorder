@@ -1307,3 +1307,45 @@ func Helper() {}
 		t.Fatalf("Should not error when config is complete: %v", err)
 	}
 }
+
+func TestVarBlockTrailingCommentsPreserved(t *testing.T) {
+	// Issue #2: Trailing comments on var declarations get misplaced
+	// The comment from the first declaration was ending up on the closing paren
+	t.Parallel()
+
+	input := `package main
+
+var (
+	zebra bool //nolint:something // zebra comment
+	apple bool //nolint:other // apple comment
+)
+
+func main() {
+	_ = zebra
+	_ = apple
+}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source failed: %v", err)
+	}
+
+	// After reordering, apple should come before zebra (alphabetical)
+	// Each variable should keep its trailing comment
+
+	// Check that zebra's comment stays with zebra
+	if !hasSubstring(result, "zebra bool //nolint:something // zebra comment") {
+		t.Errorf("zebra's trailing comment was not preserved.\nGot:\n%s", result)
+	}
+
+	// Check that apple's comment stays with apple
+	if !hasSubstring(result, "apple bool //nolint:other // apple comment") {
+		t.Errorf("apple's trailing comment was not preserved.\nGot:\n%s", result)
+	}
+
+	// The closing paren should NOT have a trailing comment
+	if hasSubstring(result, ") //nolint") {
+		t.Errorf("trailing comment incorrectly moved to closing paren.\nGot:\n%s", result)
+	}
+}
