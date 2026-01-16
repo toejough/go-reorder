@@ -47,6 +47,32 @@ type TypeGroup struct {
 	UnexportedMethods []*dst.FuncDecl
 }
 
+// getFirstReturnTypeName extracts the type name from the first return value of a function.
+// Returns empty string if the function has no return values or the type can't be determined.
+// Handles both direct types (TypeName) and pointer types (*TypeName).
+func getFirstReturnTypeName(fn *dst.FuncDecl) string {
+	if fn.Type.Results == nil || len(fn.Type.Results.List) == 0 {
+		return ""
+	}
+
+	firstResult := fn.Type.Results.List[0].Type
+
+	// Handle pointer types: *TypeName
+	if starExpr, ok := firstResult.(*dst.StarExpr); ok {
+		if ident, ok := starExpr.X.(*dst.Ident); ok {
+			return ident.Name
+		}
+		return ""
+	}
+
+	// Handle direct types: TypeName
+	if ident, ok := firstResult.(*dst.Ident); ok {
+		return ident.Name
+	}
+
+	return ""
+}
+
 // CategorizeDeclarations organizes all declarations by category.
 //
 // The algorithm uses four passes to properly handle Go's declaration patterns:
@@ -209,46 +235,17 @@ func CategorizeDeclarations(file *dst.File) *CategorizedDecls {
 				funcName := genDecl.Name.Name
 				exported := ast.IsExported(funcName)
 
-				// Check if it's a constructor (NewTypeName pattern)
-				// Constructor matching algorithm:
-				// 1. Try exact match: NewConfig → Config
-				// 2. Try longest-suffix match: NewConfigWithTimeout → Config
-				//    (longest match wins to handle NewFooBar with types Foo and FooBar)
-				if strings.HasPrefix(funcName, "New") { //nolint:nestif // Constructor matching requires nested logic
-					suffix := funcName[3:] // Remove "New" prefix
-
-					// Try exact match first (e.g., NewConfig → Config)
-					if typeGroups[suffix] != nil {
-						typeGroups[suffix].Constructors = append(typeGroups[suffix].Constructors, genDecl)
-						continue
-					}
-
-					// Try longest match if suffix contains type name
-					// Sort by length descending so FooBar matches before Foo
-					var typeNames []string
-					for tn := range typeGroups {
-						typeNames = append(typeNames, tn)
-					}
-
-					sort.Slice(typeNames, func(i, j int) bool {
-						return len(typeNames[i]) > len(typeNames[j])
-					})
-
-					matched := false
-
-					for _, tn := range typeNames {
-						if strings.Contains(suffix, tn) {
-							if tg := typeGroups[tn]; tg != nil {
-								tg.Constructors = append(tg.Constructors, genDecl)
-								matched = true
-
-								break
-							}
+				// Check if it's a constructor (New* or Must* prefix, matched by return type)
+				// Constructor matching algorithm (aligned with funcorder):
+				// 1. Function must have New* or Must* prefix
+				// 2. Match by return type: first return must be TypeName or *TypeName defined in this file
+				isConstructorCandidate := strings.HasPrefix(funcName, "New") || strings.HasPrefix(funcName, "Must")
+				if isConstructorCandidate {
+					if returnType := getFirstReturnTypeName(genDecl); returnType != "" {
+						if typeGroups[returnType] != nil {
+							typeGroups[returnType].Constructors = append(typeGroups[returnType].Constructors, genDecl)
+							continue
 						}
-					}
-
-					if matched {
-						continue
 					}
 				}
 
