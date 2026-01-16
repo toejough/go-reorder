@@ -570,6 +570,152 @@ func NewFooBarBaz() *FooBar { return nil }
 	}
 }
 
+func TestConstructorMatching_ReturnTypeOverNamePattern(t *testing.T) {
+	// Test that constructor matching uses return type, not name pattern.
+	// This aligns with funcorder's behavior.
+	// NewOsRunEnv returns runEnv interface, so it should be grouped with runEnv,
+	// NOT with osRunEnv struct (even though "OsRunEnv" appears in the name).
+	t.Parallel()
+
+	src := `package test
+
+type osRunEnv struct{}
+
+func (osRunEnv) Args() []string { return nil }
+
+type runEnv interface {
+	Args() []string
+}
+
+// NewOsRunEnv returns a runEnv that wraps os.Args.
+func NewOsRunEnv() runEnv {
+	return osRunEnv{}
+}
+`
+
+	dec := decorator.NewDecorator(token.NewFileSet())
+	file, err := dec.Parse(src)
+	if err != nil {
+		t.Fatalf("failed to parse: %v", err)
+	}
+
+	cat := CategorizeDeclarations(file)
+
+	// Find type groups
+	var osRunEnvGroup, runEnvGroup *TypeGroup
+	for _, tg := range cat.UnexportedTypes {
+		switch tg.TypeName {
+		case "osRunEnv":
+			osRunEnvGroup = tg
+		case "runEnv":
+			runEnvGroup = tg
+		}
+	}
+
+	if osRunEnvGroup == nil {
+		t.Fatal("osRunEnv type group not found")
+	}
+	if runEnvGroup == nil {
+		t.Fatal("runEnv type group not found")
+	}
+
+	// osRunEnv should have NO constructors (NewOsRunEnv returns runEnv, not osRunEnv)
+	if len(osRunEnvGroup.Constructors) != 0 {
+		names := make([]string, len(osRunEnvGroup.Constructors))
+		for i, c := range osRunEnvGroup.Constructors {
+			names[i] = c.Name.Name
+		}
+		t.Errorf("osRunEnv should have 0 constructors, got %d: %v", len(osRunEnvGroup.Constructors), names)
+	}
+
+	// runEnv should have NewOsRunEnv as its constructor (because it returns runEnv)
+	if len(runEnvGroup.Constructors) != 1 {
+		t.Errorf("runEnv should have 1 constructor, got %d", len(runEnvGroup.Constructors))
+	} else if runEnvGroup.Constructors[0].Name.Name != "NewOsRunEnv" {
+		t.Errorf("runEnv constructor = %s, want NewOsRunEnv", runEnvGroup.Constructors[0].Name.Name)
+	}
+
+	// No standalone functions - NewOsRunEnv should be a constructor for runEnv
+	if len(cat.ExportedFuncs) != 0 {
+		names := make([]string, len(cat.ExportedFuncs))
+		for i, f := range cat.ExportedFuncs {
+			names[i] = f.Name.Name
+		}
+		t.Errorf("expected 0 standalone exported funcs, got %d: %v", len(cat.ExportedFuncs), names)
+	}
+}
+
+func TestConstructorMatching_PointerReturnType(t *testing.T) {
+	// Test that constructors returning *TypeName are matched correctly.
+	t.Parallel()
+
+	src := `package test
+
+type Config struct{}
+
+func NewConfig() *Config { return &Config{} }
+`
+
+	dec := decorator.NewDecorator(token.NewFileSet())
+	file, err := dec.Parse(src)
+	if err != nil {
+		t.Fatalf("failed to parse: %v", err)
+	}
+
+	cat := CategorizeDeclarations(file)
+
+	if len(cat.ExportedTypes) != 1 {
+		t.Fatalf("expected 1 exported type, got %d", len(cat.ExportedTypes))
+	}
+
+	configGroup := cat.ExportedTypes[0]
+	if configGroup.TypeName != "Config" {
+		t.Fatalf("expected Config, got %s", configGroup.TypeName)
+	}
+
+	if len(configGroup.Constructors) != 1 {
+		t.Errorf("Config should have 1 constructor, got %d", len(configGroup.Constructors))
+	} else if configGroup.Constructors[0].Name.Name != "NewConfig" {
+		t.Errorf("Config constructor = %s, want NewConfig", configGroup.Constructors[0].Name.Name)
+	}
+}
+
+func TestConstructorMatching_MustPrefix(t *testing.T) {
+	// Test that Must* functions are also treated as constructors (matching funcorder).
+	t.Parallel()
+
+	src := `package test
+
+type Handler struct{}
+
+func MustHandler() *Handler { return &Handler{} }
+`
+
+	dec := decorator.NewDecorator(token.NewFileSet())
+	file, err := dec.Parse(src)
+	if err != nil {
+		t.Fatalf("failed to parse: %v", err)
+	}
+
+	cat := CategorizeDeclarations(file)
+
+	if len(cat.ExportedTypes) != 1 {
+		t.Fatalf("expected 1 exported type, got %d", len(cat.ExportedTypes))
+	}
+
+	handlerGroup := cat.ExportedTypes[0]
+	if handlerGroup.TypeName != "Handler" {
+		t.Fatalf("expected Handler, got %s", handlerGroup.TypeName)
+	}
+
+	// MustHandler should be a constructor for Handler
+	if len(handlerGroup.Constructors) != 1 {
+		t.Errorf("Handler should have 1 constructor, got %d", len(handlerGroup.Constructors))
+	} else if handlerGroup.Constructors[0].Name.Name != "MustHandler" {
+		t.Errorf("Handler constructor = %s, want MustHandler", handlerGroup.Constructors[0].Name.Name)
+	}
+}
+
 // BenchmarkCategorizeDeclarations benchmarks the categorization of declarations.
 func BenchmarkCategorizeDeclarations(b *testing.B) {
 	src := `package benchmark
