@@ -1349,3 +1349,26 @@ func main() {
 		t.Errorf("trailing comment incorrectly moved to closing paren.\nGot:\n%s", result)
 	}
 }
+
+func TestGroupedTypeDeclarations(t *testing.T) {
+	// Issue #3: Panic on grouped type declarations with "duplicate node" error
+	t.Parallel()
+
+	input := `package minimal
+
+type (
+	A int
+	B string
+)
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source failed: %v", err)
+	}
+
+	// Should contain both type declarations
+	if !hasSubstring(result, "type") {
+		t.Errorf("Expected type declarations in output.\nGot:\n%s", result)
+	}
+}
