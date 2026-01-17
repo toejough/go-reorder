@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/dave/dst"
+	"github.com/dave/dst/decorator"
 
 	"github.com/toejough/go-reorder/internal/ast"
 )
@@ -658,23 +659,46 @@ func FindExcludedSections(cat *CategorizedDecls, includedSections map[string]boo
 	return excluded
 }
 
+// newGenDeclTemplate creates a GenDecl by parsing a template to ensure proper
+// internal state for DST's restorer. This is necessary because directly
+// constructing a GenDecl struct loses internal tracking that DST uses for
+// correct trailing comment placement on the last spec.
+func newGenDeclTemplate(tok token.Token) *dst.GenDecl {
+	var keyword string
+	if tok == token.CONST {
+		keyword = "const"
+	} else {
+		keyword = "var"
+	}
+
+	src := "package p\n" + keyword + " (\n\tx int\n)\n"
+	dec := decorator.NewDecorator(token.NewFileSet())
+	file, _ := dec.Parse(src)
+
+	for _, decl := range file.Decls {
+		if genDecl, ok := decl.(*dst.GenDecl); ok && genDecl.Tok == tok {
+			return dst.Clone(genDecl).(*dst.GenDecl)
+		}
+	}
+
+	// Fallback (should not happen)
+	return &dst.GenDecl{Tok: tok, Lparen: true}
+}
+
 // MergeConstSpecs creates a single const block from multiple specs.
 func MergeConstSpecs(specs []*dst.ValueSpec, comment string) *dst.GenDecl {
 	dstSpecs := make([]dst.Spec, 0, len(specs))
 
 	for _, spec := range specs {
-		// Clear any existing decorations from the spec
 		spec.Decs.Before = dst.NewLine
 		spec.Decs.After = dst.NewLine
 		dstSpecs = append(dstSpecs, spec)
 	}
 
-	decl := &dst.GenDecl{
-		Tok:    token.CONST,
-		Lparen: true, // Force parentheses
-		Specs:  dstSpecs,
-	}
+	decl := newGenDeclTemplate(token.CONST)
+	decl.Specs = dstSpecs
 	decl.Decs.Before = dst.EmptyLine
+	decl.Decs.Start = nil
 	decl.Decs.Start.Append("// " + comment)
 
 	return decl
@@ -685,18 +709,15 @@ func MergeVarSpecs(specs []*dst.ValueSpec, comment string) *dst.GenDecl {
 	dstSpecs := make([]dst.Spec, 0, len(specs))
 
 	for _, spec := range specs {
-		// Clear any existing decorations from the spec
 		spec.Decs.Before = dst.NewLine
 		spec.Decs.After = dst.NewLine
 		dstSpecs = append(dstSpecs, spec)
 	}
 
-	decl := &dst.GenDecl{
-		Tok:    token.VAR,
-		Lparen: true, // Force parentheses
-		Specs:  dstSpecs,
-	}
+	decl := newGenDeclTemplate(token.VAR)
+	decl.Specs = dstSpecs
 	decl.Decs.Before = dst.EmptyLine
+	decl.Decs.Start = nil
 	decl.Decs.Start.Append("// " + comment)
 
 	return decl
