@@ -198,10 +198,17 @@ func CategorizeDeclarations(file *dst.File) *CategorizedDecls {
 						// Create individual GenDecl for this type to avoid duplicate
 						// node issues when a grouped type declaration is split across
 						// multiple TypeGroups.
-						typeGroups[typeName].TypeDecl = &dst.GenDecl{
+						newDecl := &dst.GenDecl{
 							Tok:   token.TYPE,
 							Specs: []dst.Spec{tspec},
 						}
+						// For standalone type declarations, the doc comment is on
+						// the GenDecl. For grouped declarations, each TypeSpec has
+						// its own comment which is preserved automatically.
+						if len(genDecl.Specs) == 1 {
+							newDecl.Decs = genDecl.Decs
+						}
+						typeGroups[typeName].TypeDecl = newDecl
 
 						// Add to categorized list if not an enum type
 						if !enumTypes[typeName] {
