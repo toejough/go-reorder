@@ -1372,3 +1372,34 @@ type (
 		t.Errorf("Expected type declarations in output.\nGot:\n%s", result)
 	}
 }
+
+func TestTypeDocCommentsPreserved(t *testing.T) {
+	// Issue #4: Doc comments stripped when reordering type declarations
+	t.Parallel()
+
+	input := `package testdata
+
+// Zeta is at the end alphabetically but has a doc comment.
+type Zeta struct {
+	Field string
+}
+
+// Alpha is first alphabetically and also has a doc comment.
+type Alpha struct {
+	Value int
+}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source failed: %v", err)
+	}
+
+	// Doc comments should be preserved
+	if !hasSubstring(result, "// Alpha is first alphabetically") {
+		t.Errorf("Alpha's doc comment was stripped.\nGot:\n%s", result)
+	}
+	if !hasSubstring(result, "// Zeta is at the end alphabetically") {
+		t.Errorf("Zeta's doc comment was stripped.\nGot:\n%s", result)
+	}
+}
