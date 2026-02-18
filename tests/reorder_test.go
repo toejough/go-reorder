@@ -1373,6 +1373,377 @@ type (
 	}
 }
 
+// T003: Basic //go:embed directive on exported var
+func TestSource_EmbedDirectiveExportedVar(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func Helper() {}
+
+//go:embed hello.txt
+var HelloTxt string
+`
+
+	expected := `package example
+
+//go:embed hello.txt
+var HelloTxt string
+
+func Helper() {}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// T004: Basic //go:embed directive on unexported var
+func TestSource_EmbedDirectiveUnexportedVar(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func helper() {}
+
+//go:embed config.yaml
+var configData []byte
+`
+
+	expected := `package example
+
+//go:embed config.yaml
+var configData []byte
+
+func helper() {}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// T005: Issue #5 exact reproduction case
+func TestSource_EmbedDirectiveIssue5(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+import "embed"
+
+//go:embed schema.sql
+var schemaSQL string
+
+func RunMigrations() error {
+	return nil
+}
+
+func helper() {}
+`
+
+	// schemaSQL is unexported, so it goes in unexported_vars section (after exported funcs)
+	expected := `package example
+
+import "embed"
+
+func RunMigrations() error {
+	return nil
+}
+
+//go:embed schema.sql
+var schemaSQL string
+
+func helper() {}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// T006: Multiple //go:embed directives on different vars
+func TestSource_EmbedDirectiveMultipleVars(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func Helper() {}
+
+//go:embed b.txt
+var BData string
+
+//go:embed a.txt
+var AData string
+`
+
+	expected := `package example
+
+//go:embed a.txt
+var AData string
+
+//go:embed b.txt
+var BData string
+
+func Helper() {}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// T007: //go:embed directive + doc comment on same var
+func TestSource_EmbedDirectiveWithDocComment(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func Helper() {}
+
+//go:embed hello.txt
+// HelloTxt contains the greeting message.
+var HelloTxt string
+`
+
+	expected := `package example
+
+//go:embed hello.txt
+// HelloTxt contains the greeting message.
+var HelloTxt string
+
+func Helper() {}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// T008: Multiple //go:embed lines on one var (FR-004)
+func TestSource_EmbedDirectiveMultiplePatternsOneVar(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func Helper() {}
+
+//go:embed templates/*.html
+//go:embed static/*.css
+var Assets embed.FS
+`
+
+	expected := `package example
+
+//go:embed templates/*.html
+//go:embed static/*.css
+var Assets embed.FS
+
+func Helper() {}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// T009: //go:embed var inside grouped var() block (FR-005)
+func TestSource_EmbedDirectiveGroupedVarBlock(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func Helper() {}
+
+var (
+	//go:embed hello.txt
+	HelloTxt string
+	Debug    bool
+)
+`
+
+	// Directive-bearing var extracted as standalone; Debug stays in merged block
+	expected := `package example
+
+//go:embed hello.txt
+var HelloTxt string
+
+// Exported variables.
+var (
+	Debug bool
+)
+
+func Helper() {}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// T010: Blank line between //go:embed and var (FR-006)
+func TestSource_EmbedDirectiveBlankLineNormalized(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func Helper() {}
+
+//go:embed hello.txt
+
+var HelloTxt string
+`
+
+	// Blank line normalized — directive directly above var
+	expected := `package example
+
+//go:embed hello.txt
+var HelloTxt string
+
+func Helper() {}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// T016: //go:noinline directive on function preserved after reorder
+func TestSource_NoinlineDirectiveOnFunction(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+const Version = "1.0"
+
+//go:noinline
+func HotPath() int {
+	return 42
+}
+`
+
+	expected := `package example
+
+// Exported constants.
+const (
+	Version = "1.0"
+)
+
+//go:noinline
+func HotPath() int {
+	return 42
+}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// T017: //go:generate directive on function preserved after reorder
+func TestSource_GenerateDirectiveOnFunction(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func helper() {}
+
+//go:generate stringer -type=Color
+func GenerateColors() {}
+`
+
+	expected := `package example
+
+//go:generate stringer -type=Color
+func GenerateColors() {}
+
+func helper() {}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
+// T018: Directive on type declaration already preserved by existing handling
+func TestSource_DirectiveOnTypeDeclaration(t *testing.T) {
+	t.Parallel()
+
+	input := `package example
+
+func helper() {}
+
+//go:generate stringer -type=Color
+type Color int
+`
+
+	expected := `package example
+
+//go:generate stringer -type=Color
+type Color int
+
+func helper() {}
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
 func TestTypeDocCommentsPreserved(t *testing.T) {
 	// Issue #4: Doc comments stripped when reordering type declarations
 	t.Parallel()

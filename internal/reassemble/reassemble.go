@@ -51,8 +51,8 @@ func Declarations(cat *categorize.CategorizedDecls) []dst.Decl {
 
 	// Pre-allocate with estimated capacity
 	estimatedSize := len(cat.Imports) + len(cat.Init) + len(cat.ExportedConsts) + len(cat.ExportedEnums) +
-		len(cat.ExportedVars) + len(cat.ExportedTypes) + len(cat.ExportedFuncs) +
-		len(cat.UnexportedConsts) + len(cat.UnexportedEnums) + len(cat.UnexportedVars) +
+		len(cat.ExportedVars) + len(cat.ExportedVarDecls) + len(cat.ExportedTypes) + len(cat.ExportedFuncs) +
+		len(cat.UnexportedConsts) + len(cat.UnexportedEnums) + len(cat.UnexportedVars) + len(cat.UnexportedVarDecls) +
 		len(cat.UnexportedTypes) + len(cat.UnexportedFuncs) + extraCapacity
 
 	decls := make([]dst.Decl, 0, estimatedSize)
@@ -99,6 +99,12 @@ func Declarations(cat *categorize.CategorizedDecls) []dst.Decl {
 			method.Decs.Before = dst.EmptyLine
 			decls = append(decls, method)
 		}
+	}
+
+	// Exported variables with directives (standalone)
+	for _, d := range cat.ExportedVarDecls {
+		d.Decs.Before = dst.EmptyLine
+		decls = append(decls, d)
 	}
 
 	// Exported variables (merged)
@@ -164,6 +170,12 @@ func Declarations(cat *categorize.CategorizedDecls) []dst.Decl {
 			method.Decs.Before = dst.EmptyLine
 			decls = append(decls, method)
 		}
+	}
+
+	// Unexported variables with directives (standalone)
+	for _, d := range cat.UnexportedVarDecls {
+		d.Decs.Before = dst.EmptyLine
+		decls = append(decls, d)
 	}
 
 	// Unexported variables (merged)

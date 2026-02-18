@@ -4,6 +4,7 @@ package ast
 import (
 	"go/token"
 	"slices"
+	"strings"
 	"unicode"
 
 	"github.com/dave/dst"
@@ -83,6 +84,17 @@ func IsIotaBlock(decl *dst.GenDecl) bool {
 		}
 
 		if slices.ContainsFunc(vspec.Values, ContainsIota) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// HasGoDirective checks if a GenDecl has any //go: compiler directive in its decorations.
+func HasGoDirective(decs dst.GenDeclDecorations) bool {
+	for _, dec := range decs.Start {
+		if strings.HasPrefix(dec, "//go:") {
 			return true
 		}
 	}

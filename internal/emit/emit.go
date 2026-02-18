@@ -196,11 +196,20 @@ func emitExportedEnums(cat *categorize.CategorizedDecls, cfg *Config) []dst.Decl
 }
 
 func emitExportedVars(cat *categorize.CategorizedDecls, _ *Config) []dst.Decl {
-	if len(cat.ExportedVars) == 0 {
-		return []dst.Decl{}
+	decls := make([]dst.Decl, 0)
+
+	// Emit directive-bearing vars as standalone declarations first
+	for _, d := range cat.ExportedVarDecls {
+		d.Decs.Before = dst.EmptyLine
+		decls = append(decls, d)
 	}
 
-	return []dst.Decl{categorize.MergeVarSpecs(cat.ExportedVars, "Exported variables.")}
+	// Then emit merged block for remaining vars
+	if len(cat.ExportedVars) > 0 {
+		decls = append(decls, categorize.MergeVarSpecs(cat.ExportedVars, "Exported variables."))
+	}
+
+	return decls
 }
 
 func emitExportedTypes(cat *categorize.CategorizedDecls, cfg *Config) []dst.Decl {
@@ -224,11 +233,20 @@ func emitUnexportedEnums(cat *categorize.CategorizedDecls, cfg *Config) []dst.De
 }
 
 func emitUnexportedVars(cat *categorize.CategorizedDecls, _ *Config) []dst.Decl {
-	if len(cat.UnexportedVars) == 0 {
-		return []dst.Decl{}
+	decls := make([]dst.Decl, 0)
+
+	// Emit directive-bearing vars as standalone declarations first
+	for _, d := range cat.UnexportedVarDecls {
+		d.Decs.Before = dst.EmptyLine
+		decls = append(decls, d)
 	}
 
-	return []dst.Decl{categorize.MergeVarSpecs(cat.UnexportedVars, "unexported variables.")}
+	// Then emit merged block for remaining vars
+	if len(cat.UnexportedVars) > 0 {
+		decls = append(decls, categorize.MergeVarSpecs(cat.UnexportedVars, "unexported variables."))
+	}
+
+	return decls
 }
 
 func emitUnexportedTypes(cat *categorize.CategorizedDecls, cfg *Config) []dst.Decl {

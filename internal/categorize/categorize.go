@@ -19,12 +19,14 @@ type CategorizedDecls struct {
 	Init             []*dst.FuncDecl
 	ExportedConsts   []*dst.ValueSpec
 	ExportedEnums    []*EnumGroup
-	ExportedVars     []*dst.ValueSpec
-	ExportedTypes    []*TypeGroup
-	ExportedFuncs    []*dst.FuncDecl
-	UnexportedConsts []*dst.ValueSpec
-	UnexportedEnums  []*EnumGroup
-	UnexportedVars   []*dst.ValueSpec
+	ExportedVars      []*dst.ValueSpec
+	ExportedVarDecls  []*dst.GenDecl // vars with //go: directives (preserved as whole GenDecl)
+	ExportedTypes     []*TypeGroup
+	ExportedFuncs     []*dst.FuncDecl
+	UnexportedConsts  []*dst.ValueSpec
+	UnexportedEnums   []*EnumGroup
+	UnexportedVars    []*dst.ValueSpec
+	UnexportedVarDecls []*dst.GenDecl // vars with //go: directives (preserved as whole GenDecl)
 	UnexportedTypes  []*TypeGroup
 	UnexportedFuncs  []*dst.FuncDecl
 	Uncategorized    []dst.Decl
@@ -168,15 +170,60 @@ func CategorizeDeclarations(file *dst.File) *CategorizedDecls {
 					}
 				}
 			case token.VAR:
-				// Extract specs for merging
-				for _, spec := range genDecl.Specs {
-					if vspec, ok := spec.(*dst.ValueSpec); ok {
-						if len(vspec.Names) > 0 {
+				if ast.HasGoDirective(genDecl.Decs) && len(genDecl.Specs) == 1 {
+					// Single-spec with directive on GenDecl: store whole GenDecl, normalize spacing
+					if vspec, ok := genDecl.Specs[0].(*dst.ValueSpec); ok && len(vspec.Names) > 0 {
+						exported := ast.IsExported(vspec.Names[0].Name)
+						genDecl.Decs.Before = dst.NewLine
+						// FR-006: Remove blank lines between directive and var keyword
+						genDecl.Decs.Start = normalizeDirectiveDecorations(genDecl.Decs.Start)
+						if exported {
+							cat.ExportedVarDecls = append(cat.ExportedVarDecls, genDecl)
+						} else {
+							cat.UnexportedVarDecls = append(cat.UnexportedVarDecls, genDecl)
+						}
+					}
+				} else {
+					// Multi-spec or no directive on GenDecl: iterate specs checking each for directives
+					for _, spec := range genDecl.Specs {
+						if vspec, ok := spec.(*dst.ValueSpec); ok && len(vspec.Names) > 0 {
 							exported := ast.IsExported(vspec.Names[0].Name)
-							if exported {
-								cat.ExportedVars = append(cat.ExportedVars, vspec)
+							// Check if this spec has go directives in its decorations
+							hasDirective := false
+							for _, dec := range vspec.Decs.Start {
+								if strings.HasPrefix(dec, "//go:") {
+									hasDirective = true
+									break
+								}
+							}
+							if hasDirective {
+								// Create a standalone GenDecl, moving directives from spec to GenDecl
+								newDecl := &dst.GenDecl{
+									Tok:   token.VAR,
+									Specs: []dst.Spec{vspec},
+								}
+								var directives, others dst.Decorations
+								for _, dec := range vspec.Decs.Start {
+									if strings.HasPrefix(dec, "//go:") {
+										directives = append(directives, dec)
+									} else {
+										others = append(others, dec)
+									}
+								}
+								newDecl.Decs.Start = directives
+								newDecl.Decs.Before = dst.NewLine
+								vspec.Decs.Start = others
+								if exported {
+									cat.ExportedVarDecls = append(cat.ExportedVarDecls, newDecl)
+								} else {
+									cat.UnexportedVarDecls = append(cat.UnexportedVarDecls, newDecl)
+								}
 							} else {
-								cat.UnexportedVars = append(cat.UnexportedVars, vspec)
+								if exported {
+									cat.ExportedVars = append(cat.ExportedVars, vspec)
+								} else {
+									cat.UnexportedVars = append(cat.UnexportedVars, vspec)
+								}
 							}
 						}
 					}
@@ -434,6 +481,16 @@ func SortCategorized(cat *CategorizedDecls) {
 	sort.Slice(cat.UnexportedVars, func(i, j int) bool {
 		return cat.UnexportedVars[i].Names[0].Name < cat.UnexportedVars[j].Names[0].Name
 	})
+	sort.Slice(cat.ExportedVarDecls, func(i, j int) bool {
+		iName := cat.ExportedVarDecls[i].Specs[0].(*dst.ValueSpec).Names[0].Name
+		jName := cat.ExportedVarDecls[j].Specs[0].(*dst.ValueSpec).Names[0].Name
+		return iName < jName
+	})
+	sort.Slice(cat.UnexportedVarDecls, func(i, j int) bool {
+		iName := cat.UnexportedVarDecls[i].Specs[0].(*dst.ValueSpec).Names[0].Name
+		jName := cat.UnexportedVarDecls[j].Specs[0].(*dst.ValueSpec).Names[0].Name
+		return iName < jName
+	})
 
 	// Sort enum groups by type name and their methods
 	sort.Slice(cat.ExportedEnums, func(i, j int) bool {
@@ -510,9 +567,16 @@ func CollectUncategorized(cat *CategorizedDecls, includedSections map[string]boo
 		cat.Uncategorized = append(cat.Uncategorized, MergeConstSpecs(cat.ExportedConsts, "Exported constants."))
 		cat.ExportedConsts = nil
 	}
-	if !includedSections["exported_vars"] && len(cat.ExportedVars) > 0 {
-		cat.Uncategorized = append(cat.Uncategorized, MergeVarSpecs(cat.ExportedVars, "Exported variables."))
-		cat.ExportedVars = nil
+	if !includedSections["exported_vars"] {
+		if len(cat.ExportedVars) > 0 {
+			cat.Uncategorized = append(cat.Uncategorized, MergeVarSpecs(cat.ExportedVars, "Exported variables."))
+			cat.ExportedVars = nil
+		}
+		for _, decl := range cat.ExportedVarDecls {
+			decl.Decs.Before = dst.EmptyLine
+			cat.Uncategorized = append(cat.Uncategorized, decl)
+		}
+		cat.ExportedVarDecls = nil
 	}
 	if !includedSections["exported_funcs"] {
 		for _, fn := range cat.ExportedFuncs {
@@ -525,9 +589,16 @@ func CollectUncategorized(cat *CategorizedDecls, includedSections map[string]boo
 		cat.Uncategorized = append(cat.Uncategorized, MergeConstSpecs(cat.UnexportedConsts, "unexported constants."))
 		cat.UnexportedConsts = nil
 	}
-	if !includedSections["unexported_vars"] && len(cat.UnexportedVars) > 0 {
-		cat.Uncategorized = append(cat.Uncategorized, MergeVarSpecs(cat.UnexportedVars, "unexported variables."))
-		cat.UnexportedVars = nil
+	if !includedSections["unexported_vars"] {
+		if len(cat.UnexportedVars) > 0 {
+			cat.Uncategorized = append(cat.Uncategorized, MergeVarSpecs(cat.UnexportedVars, "unexported variables."))
+			cat.UnexportedVars = nil
+		}
+		for _, decl := range cat.UnexportedVarDecls {
+			decl.Decs.Before = dst.EmptyLine
+			cat.Uncategorized = append(cat.Uncategorized, decl)
+		}
+		cat.UnexportedVarDecls = nil
 	}
 	if !includedSections["unexported_funcs"] {
 		for _, fn := range cat.UnexportedFuncs {
@@ -638,7 +709,7 @@ func FindExcludedSections(cat *CategorizedDecls, includedSections map[string]boo
 	if !includedSections["exported_consts"] && len(cat.ExportedConsts) > 0 {
 		excluded = append(excluded, "exported_consts")
 	}
-	if !includedSections["exported_vars"] && len(cat.ExportedVars) > 0 {
+	if !includedSections["exported_vars"] && (len(cat.ExportedVars) > 0 || len(cat.ExportedVarDecls) > 0) {
 		excluded = append(excluded, "exported_vars")
 	}
 	if !includedSections["exported_funcs"] && len(cat.ExportedFuncs) > 0 {
@@ -653,7 +724,7 @@ func FindExcludedSections(cat *CategorizedDecls, includedSections map[string]boo
 	if !includedSections["unexported_consts"] && len(cat.UnexportedConsts) > 0 {
 		excluded = append(excluded, "unexported_consts")
 	}
-	if !includedSections["unexported_vars"] && len(cat.UnexportedVars) > 0 {
+	if !includedSections["unexported_vars"] && (len(cat.UnexportedVars) > 0 || len(cat.UnexportedVarDecls) > 0) {
 		excluded = append(excluded, "unexported_vars")
 	}
 	if !includedSections["unexported_funcs"] && len(cat.UnexportedFuncs) > 0 {
@@ -715,6 +786,20 @@ func MergeConstSpecs(specs []*dst.ValueSpec, comment string) *dst.GenDecl {
 	decl.Decs.Start.Append("// " + comment)
 
 	return decl
+}
+
+// normalizeDirectiveDecorations removes blank line markers from decorations
+// to ensure directives appear immediately above their declarations (FR-006).
+func normalizeDirectiveDecorations(decs dst.Decorations) dst.Decorations {
+	normalized := make(dst.Decorations, 0, len(decs))
+
+	for _, dec := range decs {
+		if dec != "\n" {
+			normalized = append(normalized, dec)
+		}
+	}
+
+	return normalized
 }
 
 // MergeVarSpecs creates a single var block from multiple specs.
