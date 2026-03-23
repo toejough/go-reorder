@@ -1744,6 +1744,37 @@ func helper() {}
 	}
 }
 
+func TestSource_UntypedIotaBlockPreserved(t *testing.T) {
+	// Issue #6: Reorder breaks iota const blocks by alphabetizing constants
+	t.Parallel()
+
+	input := `package example
+
+const (
+	StoreAsIs = iota
+	ConsolidatedResult
+)
+`
+
+	expected := `package example
+
+// Exported constants.
+const (
+	StoreAsIs = iota
+	ConsolidatedResult
+)
+`
+
+	result, err := reorder.Source(input)
+	if err != nil {
+		t.Fatalf("Source() error = %v", err)
+	}
+
+	if result != expected {
+		t.Errorf("Source() mismatch:\nGot:\n%s\n\nWant:\n%s", result, expected)
+	}
+}
+
 func TestTypeDocCommentsPreserved(t *testing.T) {
 	// Issue #4: Doc comments stripped when reordering type declarations
 	t.Parallel()

@@ -50,10 +50,11 @@ func Declarations(cat *categorize.CategorizedDecls) []dst.Decl {
 	const extraCapacity = 10 // Extra capacity for main + merged const/var blocks
 
 	// Pre-allocate with estimated capacity
-	estimatedSize := len(cat.Imports) + len(cat.Init) + len(cat.ExportedConsts) + len(cat.ExportedEnums) +
-		len(cat.ExportedVars) + len(cat.ExportedVarDecls) + len(cat.ExportedTypes) + len(cat.ExportedFuncs) +
-		len(cat.UnexportedConsts) + len(cat.UnexportedEnums) + len(cat.UnexportedVars) + len(cat.UnexportedVarDecls) +
-		len(cat.UnexportedTypes) + len(cat.UnexportedFuncs) + extraCapacity
+	estimatedSize := len(cat.Imports) + len(cat.Init) + len(cat.ExportedConsts) + len(cat.ExportedConstDecls) +
+		len(cat.ExportedEnums) + len(cat.ExportedVars) + len(cat.ExportedVarDecls) + len(cat.ExportedTypes) +
+		len(cat.ExportedFuncs) + len(cat.UnexportedConsts) + len(cat.UnexportedConstDecls) + len(cat.UnexportedEnums) +
+		len(cat.UnexportedVars) + len(cat.UnexportedVarDecls) + len(cat.UnexportedTypes) + len(cat.UnexportedFuncs) +
+		extraCapacity
 
 	decls := make([]dst.Decl, 0, estimatedSize)
 
@@ -69,6 +70,14 @@ func Declarations(cat *categorize.CategorizedDecls) []dst.Decl {
 	for _, initFn := range cat.Init {
 		initFn.Decs.Before = dst.EmptyLine
 		decls = append(decls, initFn)
+	}
+
+	// Exported constants with iota (standalone)
+	for _, d := range cat.ExportedConstDecls {
+		d.Decs.Before = dst.EmptyLine
+		d.Decs.Start = nil
+		d.Decs.Start.Append("// Exported constants.")
+		decls = append(decls, d)
 	}
 
 	// Exported constants (merged)
@@ -140,6 +149,14 @@ func Declarations(cat *categorize.CategorizedDecls) []dst.Decl {
 	for _, fn := range cat.ExportedFuncs {
 		fn.Decs.Before = dst.EmptyLine
 		decls = append(decls, fn)
+	}
+
+	// Unexported constants with iota (standalone)
+	for _, d := range cat.UnexportedConstDecls {
+		d.Decs.Before = dst.EmptyLine
+		d.Decs.Start = nil
+		d.Decs.Start.Append("// unexported constants.")
+		decls = append(decls, d)
 	}
 
 	// Unexported constants (merged)

@@ -27,8 +27,10 @@ func TestCategorizeDeclarations(t *testing.T) {
 		src                  string
 		expectedMain         bool
 		expectedInitCount    int
-		expectedExpConsts    int
-		expectedUnexpConsts  int
+		expectedExpConsts      int
+		expectedExpConstDecls  int
+		expectedUnexpConsts    int
+		expectedUnexpConstDecls int
 		expectedExpVars      int
 		expectedUnexpVars    int
 		expectedExpTypes     int
@@ -139,8 +141,8 @@ const (
 	c
 )
 `,
-			expectedUnexpConsts: 3, // Should be regular constants, not an enum
-			expectedUnexpEnums:  0, // No enum since no type annotation
+			expectedUnexpConstDecls: 1, // Preserved as whole GenDecl to maintain iota order
+			expectedUnexpEnums:      0, // No enum since no type annotation
 		},
 		{
 			name: "exported untyped iota block treated as constants",
@@ -152,9 +154,9 @@ const (
 	C
 )
 `,
-			expectedExpConsts:  3,
-			expectedUnexpEnums: 0,
-			expectedExpEnums:   0,
+			expectedExpConstDecls: 1, // Preserved as whole GenDecl to maintain iota order
+			expectedUnexpEnums:    0,
+			expectedExpEnums:      0,
 		},
 		{
 			name: "constructor matching with ambiguous types - longest match wins",
@@ -191,8 +193,14 @@ func NewFooBarWithOptions() *FooBar { return nil }
 			if len(cat.ExportedConsts) != tt.expectedExpConsts {
 				t.Errorf("exported consts = %d, want %d", len(cat.ExportedConsts), tt.expectedExpConsts)
 			}
+			if len(cat.ExportedConstDecls) != tt.expectedExpConstDecls {
+				t.Errorf("exported const decls = %d, want %d", len(cat.ExportedConstDecls), tt.expectedExpConstDecls)
+			}
 			if len(cat.UnexportedConsts) != tt.expectedUnexpConsts {
 				t.Errorf("unexported consts = %d, want %d", len(cat.UnexportedConsts), tt.expectedUnexpConsts)
+			}
+			if len(cat.UnexportedConstDecls) != tt.expectedUnexpConstDecls {
+				t.Errorf("unexported const decls = %d, want %d", len(cat.UnexportedConstDecls), tt.expectedUnexpConstDecls)
 			}
 
 			if len(cat.ExportedVars) != tt.expectedExpVars {

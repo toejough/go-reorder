@@ -184,11 +184,22 @@ func emitInit(cat *categorize.CategorizedDecls, _ *Config) []dst.Decl {
 }
 
 func emitExportedConsts(cat *categorize.CategorizedDecls, _ *Config) []dst.Decl {
-	if len(cat.ExportedConsts) == 0 {
-		return []dst.Decl{}
+	decls := make([]dst.Decl, 0)
+
+	// Emit iota const blocks as standalone declarations first
+	for _, d := range cat.ExportedConstDecls {
+		d.Decs.Before = dst.EmptyLine
+		d.Decs.Start = nil
+		d.Decs.Start.Append("// Exported constants.")
+		decls = append(decls, d)
 	}
 
-	return []dst.Decl{categorize.MergeConstSpecs(cat.ExportedConsts, "Exported constants.")}
+	// Then emit merged block for remaining consts
+	if len(cat.ExportedConsts) > 0 {
+		decls = append(decls, categorize.MergeConstSpecs(cat.ExportedConsts, "Exported constants."))
+	}
+
+	return decls
 }
 
 func emitExportedEnums(cat *categorize.CategorizedDecls, cfg *Config) []dst.Decl {
@@ -221,11 +232,22 @@ func emitExportedFuncs(cat *categorize.CategorizedDecls, _ *Config) []dst.Decl {
 }
 
 func emitUnexportedConsts(cat *categorize.CategorizedDecls, _ *Config) []dst.Decl {
-	if len(cat.UnexportedConsts) == 0 {
-		return []dst.Decl{}
+	decls := make([]dst.Decl, 0)
+
+	// Emit iota const blocks as standalone declarations first
+	for _, d := range cat.UnexportedConstDecls {
+		d.Decs.Before = dst.EmptyLine
+		d.Decs.Start = nil
+		d.Decs.Start.Append("// unexported constants.")
+		decls = append(decls, d)
 	}
 
-	return []dst.Decl{categorize.MergeConstSpecs(cat.UnexportedConsts, "unexported constants.")}
+	// Then emit merged block for remaining consts
+	if len(cat.UnexportedConsts) > 0 {
+		decls = append(decls, categorize.MergeConstSpecs(cat.UnexportedConsts, "unexported constants."))
+	}
+
+	return decls
 }
 
 func emitUnexportedEnums(cat *categorize.CategorizedDecls, cfg *Config) []dst.Decl {

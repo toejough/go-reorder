@@ -17,14 +17,16 @@ type CategorizedDecls struct {
 	Imports          []dst.Decl
 	Main             *dst.FuncDecl
 	Init             []*dst.FuncDecl
-	ExportedConsts   []*dst.ValueSpec
-	ExportedEnums    []*EnumGroup
+	ExportedConsts     []*dst.ValueSpec
+	ExportedConstDecls []*dst.GenDecl // const blocks with iota (preserved as whole GenDecl)
+	ExportedEnums      []*EnumGroup
 	ExportedVars      []*dst.ValueSpec
 	ExportedVarDecls  []*dst.GenDecl // vars with //go: directives (preserved as whole GenDecl)
 	ExportedTypes     []*TypeGroup
 	ExportedFuncs     []*dst.FuncDecl
-	UnexportedConsts  []*dst.ValueSpec
-	UnexportedEnums   []*EnumGroup
+	UnexportedConsts     []*dst.ValueSpec
+	UnexportedConstDecls []*dst.GenDecl // const blocks with iota (preserved as whole GenDecl)
+	UnexportedEnums      []*EnumGroup
 	UnexportedVars    []*dst.ValueSpec
 	UnexportedVarDecls []*dst.GenDecl // vars with //go: directives (preserved as whole GenDecl)
 	UnexportedTypes  []*TypeGroup
@@ -131,9 +133,10 @@ func CategorizeDeclarations(file *dst.File) *CategorizedDecls {
 			case token.IMPORT:
 				cat.Imports = append(cat.Imports, genDecl)
 			case token.CONST:
-				// Check if this is a typed iota block (enum pattern)
+				// Check if this is an iota block
+				isIota := ast.IsIotaBlock(genDecl)
 				typeName := ""
-				if ast.IsIotaBlock(genDecl) {
+				if isIota {
 					typeName = ast.ExtractEnumType(genDecl)
 				}
 
@@ -154,6 +157,17 @@ func CategorizeDeclarations(file *dst.File) *CategorizedDecls {
 					}
 
 					enumTypes[typeName] = true
+				} else if isIota {
+					// Untyped iota block - preserve as whole GenDecl to maintain order
+					if len(genDecl.Specs) > 0 {
+						if vspec, ok := genDecl.Specs[0].(*dst.ValueSpec); ok && len(vspec.Names) > 0 {
+							if ast.IsExported(vspec.Names[0].Name) {
+								cat.ExportedConstDecls = append(cat.ExportedConstDecls, genDecl)
+							} else {
+								cat.UnexportedConstDecls = append(cat.UnexportedConstDecls, genDecl)
+							}
+						}
+					}
 				} else {
 					// Regular const - extract specs for merging
 					for _, spec := range genDecl.Specs {
@@ -473,6 +487,16 @@ func SortCategorized(cat *CategorizedDecls) {
 	sort.Slice(cat.UnexportedConsts, func(i, j int) bool {
 		return cat.UnexportedConsts[i].Names[0].Name < cat.UnexportedConsts[j].Names[0].Name
 	})
+	sort.Slice(cat.ExportedConstDecls, func(i, j int) bool {
+		iName := cat.ExportedConstDecls[i].Specs[0].(*dst.ValueSpec).Names[0].Name
+		jName := cat.ExportedConstDecls[j].Specs[0].(*dst.ValueSpec).Names[0].Name
+		return iName < jName
+	})
+	sort.Slice(cat.UnexportedConstDecls, func(i, j int) bool {
+		iName := cat.UnexportedConstDecls[i].Specs[0].(*dst.ValueSpec).Names[0].Name
+		jName := cat.UnexportedConstDecls[j].Specs[0].(*dst.ValueSpec).Names[0].Name
+		return iName < jName
+	})
 
 	// Sort var specs by name
 	sort.Slice(cat.ExportedVars, func(i, j int) bool {
@@ -563,9 +587,16 @@ func SortCategorized(cat *CategorizedDecls) {
 //
 //nolint:funlen,gocognit,cyclop // Section handling is inherently repetitive
 func CollectUncategorized(cat *CategorizedDecls, includedSections map[string]bool) {
-	if !includedSections["exported_consts"] && len(cat.ExportedConsts) > 0 {
-		cat.Uncategorized = append(cat.Uncategorized, MergeConstSpecs(cat.ExportedConsts, "Exported constants."))
-		cat.ExportedConsts = nil
+	if !includedSections["exported_consts"] {
+		if len(cat.ExportedConsts) > 0 {
+			cat.Uncategorized = append(cat.Uncategorized, MergeConstSpecs(cat.ExportedConsts, "Exported constants."))
+			cat.ExportedConsts = nil
+		}
+		for _, decl := range cat.ExportedConstDecls {
+			decl.Decs.Before = dst.EmptyLine
+			cat.Uncategorized = append(cat.Uncategorized, decl)
+		}
+		cat.ExportedConstDecls = nil
 	}
 	if !includedSections["exported_vars"] {
 		if len(cat.ExportedVars) > 0 {
@@ -585,9 +616,16 @@ func CollectUncategorized(cat *CategorizedDecls, includedSections map[string]boo
 		}
 		cat.ExportedFuncs = nil
 	}
-	if !includedSections["unexported_consts"] && len(cat.UnexportedConsts) > 0 {
-		cat.Uncategorized = append(cat.Uncategorized, MergeConstSpecs(cat.UnexportedConsts, "unexported constants."))
-		cat.UnexportedConsts = nil
+	if !includedSections["unexported_consts"] {
+		if len(cat.UnexportedConsts) > 0 {
+			cat.Uncategorized = append(cat.Uncategorized, MergeConstSpecs(cat.UnexportedConsts, "unexported constants."))
+			cat.UnexportedConsts = nil
+		}
+		for _, decl := range cat.UnexportedConstDecls {
+			decl.Decs.Before = dst.EmptyLine
+			cat.Uncategorized = append(cat.Uncategorized, decl)
+		}
+		cat.UnexportedConstDecls = nil
 	}
 	if !includedSections["unexported_vars"] {
 		if len(cat.UnexportedVars) > 0 {
