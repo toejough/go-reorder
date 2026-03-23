@@ -30,7 +30,14 @@
       "Bash(git reset:*)",
       "Bash(targ reorder-decls-check:*)",
       "Bash(git rev-parse:*)",
-      "Bash(/tmp/go-reorder-fresh:*)"
+      "Bash(/tmp/go-reorder-fresh:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(gh issue close:*)",
+      "Bash(mage check:*)",
+      "Bash(git show:*)"
     ]
   }
 }
